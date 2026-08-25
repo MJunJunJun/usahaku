@@ -1,0 +1,69 @@
+{
+  "summary": "Full-stack E2E test of UsahaKu (Phases 1-3). Backend: 30 pytest cases across auth, websites/products, AI generate+ai-edit, publish, public site, trial expiry/maintenance, owner-access, payments, admin panel and cross-user security -> 29 passed, 1 failed (no brute-force lockout). Frontend: landing+nav, register->trial banner, 3-step wizard with AI generate, website detail (device toggles, AI suggestions, AI edit, publish), public site (WhatsApp/products/Maps), manual edit save, subscription+manual payment (proof upload, PENDING, WhatsApp CTA), admin login/overview/payments approve/users search+actions/plans/settings/activity-logs/websites, and full maintenance -> owner-access -> subscribe -> approve -> site online chain. One CRITICAL backend blocker found and fixed by me (unique slug index collision on empty draft slugs made every 2nd draft website creation return 500).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/websites", "issue": "FIXED BY TESTER: startup created unique+sparse index on `slug` while new drafts are inserted with slug=\"\" -> DuplicateKeyError (500 'Internal Server Error') for every draft after the first one platform-wide. Website creation was completely broken. Changed index to unique partial index {slug: {$gt: ''}} (server.py startup). Please review/keep this fix and consider storing slug=None for drafts.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "No brute-force protection: 6+ consecutive wrong passwords all return 401, no lockout/throttle (playbook requires lockout after 5 failures)."},
+      {"endpoint": "startup/seed_admin", "issue": "Admin seed only inserts when missing; if ADMIN_PASSWORD in .env changes the existing admin hash is never updated (playbook requires idempotent update)."},
+      {"endpoint": "CORS middleware", "issue": "allow_origin_regex='.*' with allow_credentials=True ignores CORS_ORIGINS env var; should use explicit origins from env."},
+      {"endpoint": "GET /api/owner-access/{slug}", "issue": "Does not call refresh_status, so it can report stale 'TRIAL_ACTIVE' for an owner whose trial already lapsed (until /auth/me or /public/{slug} runs first)."},
+      {"endpoint": "GET /api/uploads/{file_id}", "issue": "No auth/ownership check - any anonymous caller with a file id can download payment proofs; also uses blocking `requests` inside async handlers (init_storage/put/get) which blocks the event loop."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Admin PaymentDetail", "issue": "Label 'Alasan (untuk penolakan)' overlaps the reject textarea/placeholder (text collides) - broken label/textarea layout", "selector": "[data-testid=\"reject-reason\"]", "priority": "MEDIUM"},
+      {"component": "PaymentDetail / Admin proof viewer", "issue": "PDF proofs are detected by `proofUrl.endsWith('.pdf')` but upload URLs are /api/uploads/{uuid} with no extension, so a PDF proof renders inside <img> and shows as a broken image instead of the 'Buka PDF' link. Use the stored contentType instead.", "selector": "[data-testid=\"admin-proof-image\"]", "priority": "MEDIUM"},
+      {"component": "Subscription (expired trial)", "issue": "Current-plan card shows 'Kuota 1 website · Berakhir -' (missing date) when status is TRIAL_EXPIRED", "selector": "[data-testid=\"subscription-plan-premium-1\"] (status card)", "priority": "LOW"},
+      {"component": "PublicSite maintenance page", "issue": "Tool emoji icon renders as tofu/broken glyph boxes in the maintenance card header", "selector": "[data-testid=\"maintenance-home\"] page header", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Admin payment proof preview", "issue": "Proof image takes ~5-6s to appear (backend proxies object storage) with no skeleton/loading state; looks like an empty 'BUKTI TRANSFER' panel meanwhile", "affected_selectors": ["[data-testid=\"admin-proof-image\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Public site (/site/{slug})", "issues": ["Hero title is clipped at the top of the hero band (first line cut off) at 1920x1080", "'Pesan Sekarang' CTA renders outside/below the hero image band and overlaps the next section"]},
+      {"screen": "Login / Register split screen", "issues": ["Left brand panel content is bottom-anchored leaving a very large empty area at the top"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_usahaku_api.py",
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/seed_ui_expired.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Review the slug index fix in server.py startup (drop slug_1, create unique partial index on non-empty slug); ideally also stop writing slug=\"\" for drafts.",
+    "Add login brute-force lockout (5 failed attempts) as required by the auth playbook.",
+    "Make seed_admin idempotent: update existing admin password hash when ADMIN_PASSWORD changes.",
+    "Restrict CORS to CORS_ORIGINS from env instead of allow_origin_regex='.*' with credentials.",
+    "Protect GET /api/uploads/{id} with auth/ownership (payment proofs are publicly downloadable by id).",
+    "Fix admin reject-reason label/textarea overlap.",
+    "Detect PDF proofs via stored contentType, not URL extension.",
+    "Fix public-site hero clipping/CTA overflow and show trial end date on the expired subscription status card.",
+    "Call refresh_status inside /owner-access so the owner page never shows a stale TRIAL_ACTIVE."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 720 lines and mixes auth, websites, AI, payments, admin, settings and storage - split into routers/modules (routes/, services/) before it grows further.",
+    "Storage calls use blocking `requests` inside async FastAPI handlers (upload_file, download_file, init_storage) - move to httpx.AsyncClient or run_in_executor to avoid blocking the event loop.",
+    "ai_json() json.loads on raw model output with no schema validation; a malformed field (e.g. non-hex color) is written straight into themeConfig. Validate with a Pydantic model.",
+    "quota_for() returns websiteQuota for TRIAL_ACTIVE users, so an admin add_quota on a trial user silently raises trial limits - confirm intended.",
+    "Frontend wizard swallows AI generation failures (`catch {}`) with no user feedback; the user only finds out on the detail page."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (startup slug index fix only)",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_usahaku_api.py",
+    "/app/backend/tests/seed_ui_expired.py"
+  ],
+  "success_rate": {"backend": "97% (29/30 pytest cases)", "frontend": "95% (all critical flows pass; 4 UI/design defects)"},
+  "seed_data_creation": "UI user qa_ui_1787663588@qa-usahaku.com / TestPass123! (Premium 3 ACTIVE after approval, published site /site/qa-kopi-nusantara). Expired-trial owner qa_expired1@qa-usahaku.com / TestPass123! with published site /site/qa-warung-maintenance (maintenance mode). Many test_*@qa-usahaku.com users from pytest. Helper: /app/backend/tests/seed_ui_expired.py",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Admin admin@usahaku.id / UsahaKuAdmin2026! (works). Test users noted in seed_data_creation.",
+  "context_for_next_testing_agent": "Backend suite: `cd /app/backend && python -m pytest tests/ -v` (pytest.ini forces -n 2 --dist loadscope). Emails must NOT use reserved TLDs like .test (EmailStr rejects them) - use @qa-usahaku.com. Playwright: dialogs must be handled with an async handler (asyncio.create_task(d.accept())) or clicks on confirm-based buttons (approve payment, delete website, publish) hang. Publish navigates straight to /site/{slug}; 'open-public-link' only exists when returning to the detail page. Payment page is a 3-step flow: click already-transferred-button before the proof upload step appears. Untested/not re-verified: admin reject flow via UI, notifications page UI, forgot/reset password UI pages, logo/cover/product image uploads via UI, mobile viewport layouts.",
+  "rca_of_the_issue": "Website creation 500s: startup created `unique+sparse` index on websites.slug, but sparse only skips missing fields - drafts are inserted with slug=\"\" so the second draft in the whole database triggered DuplicateKeyError E11000 (dup key {slug: ''}). Replaced with a unique partial index filtered on {slug: {$gt: ''}}; after the fix two users creating drafts concurrently both succeed and publish-time slug uniqueness is still enforced."
+}

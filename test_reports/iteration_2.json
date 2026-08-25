@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 2 retest of the 8 reported fixes + regression. Backend: 33 pytest cases (30 existing + 3 new in test_iteration2_fixes.py) -> 32 passed, 1 failed (brute-force lockout still absent). All 8 fixes VERIFIED PASS: (1) PDF proof detection via proofContentType (backend returns application/pdf on /payments/mine, /payments/{id}, /admin/payments/{id}; admin UI renders 'Buka bukti PDF' link), (2) admin reject-reason label sits above textarea (label y+h=447 vs textarea y=455, no overlap, textarea editable), (3) TRIAL_EXPIRED subscription card shows 'Kuota 1 website · Trial berakhir 22 Agustus 2026', (4) maintenance page shows lucide Wrench svg inside 80x80 green badge (no tofu glyph), (5) public hero at 1440x900 has title/subtitle/CTA fully inside the 640px hero band, (6) /login and /register brand panel vertically centered (top gap 188 vs bottom 195), (7) GET /api/owner-access/{slug} now returns TRIAL_EXPIRED on a fresh session with no prior /auth/me, (8) wizard AI failure (mocked 500) redirects to /dashboard/websites/{id} and alerts 'Website berhasil dibuat, tapi AI belum berhasil membuat konten...'. Regression E2E re-verified end to end: register -> trial -> wizard -> real Gemini generate -> publish -> public /site/qa-ai-fail-shop live with products -> Premium 3 + 1 extra website payment with PDF proof upload -> admin approve (quota 4, status ACTIVE, notification) -> second website creation allowed. Found and fixed ONE new CRITICAL frontend regression: PaymentDetail crashed with 'useParams is not defined' (missing import in Subscription.jsx) - white screen for /dashboard/subscription/payment/:pid.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "STILL OPEN from iteration 1: 6 consecutive wrong passwords all return 401, no lockout/throttle (auth playbook requires lockout after 5 failures)."},
+      {"endpoint": "startup/seed_admin (server.py:732)", "issue": "STILL OPEN: only inserts admin when missing; changing ADMIN_PASSWORD never updates the existing hash (playbook requires idempotent update)."},
+      {"endpoint": "CORS middleware (server.py:715)", "issue": "STILL OPEN: allow_origin_regex='.*' with allow_credentials=True; CORS_ORIGINS env is ignored."},
+      {"endpoint": "GET /api/uploads/{file_id}", "issue": "STILL OPEN: verified unauthenticated GET of a payment-proof PDF returns 200 - any caller with the file id can download payment proofs. Needs ownership check for proof/private files (public site assets can stay open)."},
+      {"endpoint": "storage helpers", "issue": "STILL OPEN: blocking `requests` calls inside async handlers (init_storage/put/get) block the event loop; proof preview takes ~5s with no loading state in the UI."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Subscription.jsx PaymentDetail", "issue": "FIXED BY TESTER: `useParams` used at line 262 but never imported -> ReferenceError, full white-screen crash on /dashboard/subscription/payment/:pid (user could not view their own payment/proof). Added useParams to the react-router-dom import; re-verified page renders and shows 'Buka bukti PDF'.", "selector": "[data-testid=\"view-proof\"]", "priority": "CRITICAL (fixed)"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Public site hero (/site/{slug})", "issues": ["Hero CTA is a white pill whose label uses the AI-generated accent colour (`.public-hero-inner a{background:#fff;color:var(--acc)}`). When the AI picks a pale accent (e.g. qa-kopi-nusantara, qa-ai-fail-shop) the 'Pesan sekarang' / 'Pesan via WhatsApp' text is nearly invisible - clamp/darken the CTA text colour or validate accent luminance.", "Hero subtitle (opacity .92 white) is low-contrast over light hero photos; add a stronger scrim/text-shadow."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2_fixes.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_usahaku_api.py",
+    "/app/test_reports/pytest/pytest_results_it2.xml"
+  ],
+  "action_items": [
+    "Keep the useParams import fix in /app/frontend/src/pages/Subscription.jsx (tester-applied) and add a lint/CI check - this crash would have shipped.",
+    "Add login brute-force lockout after 5 failed attempts (only remaining failing pytest case).",
+    "Make seed_admin idempotent (update hash when ADMIN_PASSWORD changes).",
+    "Restrict CORS to explicit CORS_ORIGINS instead of allow_origin_regex='.*' with credentials.",
+    "Protect GET /api/uploads/{id} for payment proofs (verified still publicly downloadable).",
+    "Fix hero CTA/subtitle contrast when the AI accent colour is light."
+  ],
+  "critical_code_review_comments": [
+    "PaymentFlow reads query params via `new URLSearchParams(window.location.search)` (Subscription.jsx:131) instead of react-router useSearchParams - inconsistent and breaks on client-side transitions without a remount.",
+    "server.py is still ~738 lines mixing auth/websites/AI/payments/admin/storage - split into routers.",
+    "_proof_content_type does a per-payment DB round trip inside the /payments/mine loop (N+1); batch with a single $in query on files.",
+    "Drafts are still inserted with slug=\"\" (the tester's partial unique index from iteration 1 is what keeps this safe); prefer slug=None for drafts.",
+    "ai_json() still json.loads raw model output with no Pydantic/schema validation before writing themeConfig."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/Subscription.jsx (added missing useParams import)",
+    "/app/backend/tests/test_iteration2_fixes.py (new)"
+  ],
+  "success_rate": {"backend": "97% (32/33 pytest cases)", "frontend": "100% of the 8 retested fixes pass; 1 critical crash found & fixed, 1 design contrast issue open"},
+  "seed_data_creation": "New UI user qa_aifail_1787664819@qa-usahaku.com / TestPass123! (Premium 3 ACTIVE, quota 4, published site /site/qa-ai-fail-shop + DRAFT 'QA Second Site'). Reused qa_expired1@qa-usahaku.com / TestPass123! (TRIAL_EXPIRED, /site/qa-warung-maintenance). Approved payment e3e7c5b8-b92b-42d3-8b42-6245078f5cb4; pending PDF payment 6ab2e283-6e49-4a7d-b19d-a7cf47463e35 left for admin-UI inspection.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Admin admin@usahaku.id / UsahaKuAdmin2026! (works, bcrypt $2b$ hash, httpOnly+Secure cookie confirmed). Users listed under seed_data_creation.",
+  "context_for_next_testing_agent": "Run backend with `cd /app/backend && python -m pytest tests/ -v` (pytest.ini forces -n 2 --dist loadscope). New file tests/test_iteration2_fixes.py covers PDF/image proofContentType and owner-access refresh_status; note publish() may normalise/suffix the slug so always read slug from the publish response. Playwright: handle dialogs with asyncio.create_task(d.accept()) (approve payment, delete, AI-fail alert); payment is a 3-step flow (choose-plan-{slug}-button -> continue-payment-button -> already-transferred-button -> proof-input -> submit-payment-button). Avoid wait_for_url('**/dashboard/websites/**') after wizard submit - it matches /create too. Still untested: admin reject flow end-to-end via UI, notifications page, forgot/reset-password UI, mobile viewports, product image uploads via UI.",
+  "rca_of_the_issue": "New crash RCA: the iteration-1 fix that added proofContentType handling to Subscription.jsx PaymentDetail introduced/left `const { pid } = useParams()` while the file only imported Link and useNavigate from react-router-dom, so rendering /dashboard/subscription/payment/:pid threw ReferenceError and React unmounted the tree (blank page). Fixed by importing useParams; re-tested and the page now loads and correctly renders the 'Buka bukti PDF' link for a PDF proof."
+}

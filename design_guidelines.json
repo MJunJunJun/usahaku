@@ -1,0 +1,70 @@
+{
+  "app_name": "USAHAKU",
+  "tagline": "Website Profesional untuk Usahamu, Dibuat dengan AI.",
+  "archetype": "ORGANIC & EARTHY / SAAS PROFESSIONAL",
+  "typography": {
+    "heading_font": "Plus Jakarta Sans, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight font-extrabold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base text-gray-700 leading-relaxed",
+      "small": "text-sm text-gray-500"
+    }
+  },
+  "colors": {
+    "primary": "#16A34A",
+    "primary_dark": "#14532D",
+    "primary_light": "#F0FDF4",
+    "background": "#FFFFFF",
+    "card_bg": "#FFFFFF",
+    "text_dark": "#111827",
+    "text_muted": "#6B7280",
+    "border_color": "#E5E7EB"
+  },
+  "surface_strategies": {
+    "header": "Crystal Glass backdrop-blur-xl bg-white/80 border-b border-gray-200/60 sticky top-0 z-50",
+    "card": "bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all p-6",
+    "modal": "bg-white rounded-2xl shadow-2xl border border-gray-100 p-8"
+  },
+  "components": [
+    "Public Landing Page with Hero, Feature Bento Grid, Testimonials, Pricing Plans, and FAQ",
+    "Authentication (Register/Login with email/password, automatic 30-day free trial initialization)",
+    "Dashboard with Trial Status countdown (TRIAL_ACTIVE, TRIAL_EXPIRED, ACTIVE, PAYMENT_PENDING, EXPIRED)",
+    "Multi-website management & Website creation wizard (Business info, contact, location, hours)",
+    "Object-storage image uploads for products (up to 3 images per product)",
+    "Gemini 3 Flash AI website generation & AI edit prompt assistant",
+    "Interactive website preview & manual website editor",
+    "Publish / Unpublish toggle with public /site/[slug] view and WhatsApp ordering integration",
+    "Subscription plans & Manual Bank Transfer payment submission with proof upload",
+    "WhatsApp Admin notification trigger for payment approval",
+    "Admin Dashboard for user management, website oversight, subscription approval, and quota adjustments",
+    "Persistent data isolation, activity logs, notifications, and password reset flows"
+  ],
+  "image_urls": [
+    {
+      "category": "storefront",
+      "url": "https://images.unsplash.com/photo-1567007045401-24c4f4a31920?q=80&w=800&auto=format&fit=crop",
+      "description": "Indonesian local UMKM storefront showcase"
+    },
+    {
+      "category": "workspace",
+      "url": "https://images.unsplash.com/photo-1662098963229-0a0f29da1f3b?q=80&w=800&auto=format&fit=crop",
+      "description": "Modern Indonesian startup workspace and entrepreneurs"
+    },
+    {
+      "category": "street_vendor",
+      "url": "https://images.pexels.com/photos/36710343/pexels-photo-36710343.jpeg?auto=compress&cs=tinysrgb&w=800",
+      "description": "Traditional warung / street food vendor going digital"
+    }
+  ],
+  "universal_guidelines": [
+    "All interactive elements must include data-testid attributes",
+    "Use generous spacing (p-6 to p-12)",
+    "Ensure high contrast and WCAG compliance",
+    "Provide responsive layouts for mobile, tablet, and desktop",
+    "Maintain Indonesian language UI copy with professional SaaS tone"
+  ]
+}
