@@ -26,9 +26,10 @@ STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 
 DEFAULT_PLANS = [
-    {"id": "trial", "slug": "trial", "name": "Trial Gratis", "monthlyPrice": 0, "websiteLimit": 1, "features": ["1 website", "AI generation", "Katalog produk", "WhatsApp & Google Maps"], "isActive": True, "isDefault": True},
-    {"id": "premium-1", "slug": "premium-1", "name": "Premium 1", "monthlyPrice": 50000, "websiteLimit": 1, "features": ["1 website", "AI generation & editing", "Katalog tanpa batas", "Dukungan prioritas"], "isActive": True},
-    {"id": "premium-3", "slug": "premium-3", "name": "Premium 3", "monthlyPrice": 100000, "websiteLimit": 3, "features": ["Hingga 3 website", "AI generation & editing", "Tambah website +Rp25.000", "Dukungan prioritas"], "isActive": True},
+    {"id": "trial", "slug": "trial", "name": "Trial Gratis", "monthlyPrice": 0, "websiteLimit": 1, "features": ["1 website", "AI generation", "Katalog produk", "WhatsApp & Google Maps"], "isActive": True, "isDefault": True, "allowsAdditional": False},
+    {"id": "basic", "slug": "basic", "name": "Basic", "monthlyPrice": 50000, "websiteLimit": 1, "features": ["1 website", "AI generation & editing", "Katalog tanpa batas", "Dukungan prioritas"], "isActive": True, "allowsAdditional": False},
+    {"id": "premium", "slug": "premium", "name": "Premium", "monthlyPrice": 100000, "websiteLimit": 3, "features": ["3 website", "AI generation & editing", "Katalog tanpa batas", "Dukungan prioritas"], "isActive": True, "allowsAdditional": False},
+    {"id": "platinum", "slug": "platinum", "name": "Platinum", "monthlyPrice": 100000, "websiteLimit": 3, "features": ["3 website + bisa ditambah", "+Rp25.000 per website tambahan", "AI generation & editing", "Dukungan prioritas"], "isActive": True, "allowsAdditional": True},
 ]
 
 DEFAULT_SETTINGS = {
@@ -126,6 +127,10 @@ class WebsiteInput(BaseModel):
     postalCode: str = ""
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    customDomain: str = ""
+
+class TrackInput(BaseModel):
+    type: str  # view | whatsapp
 
 class ProductInput(BaseModel):
     name: str
@@ -151,6 +156,16 @@ class PaymentCreateInput(BaseModel):
     transferDate: str = ""
     proofUrl: str = ""
     notes: str = ""
+    couponCode: str = ""
+
+class CouponInput(BaseModel):
+    code: str
+    discountType: str
+    discountValue: float
+    maxUses: Optional[int] = None
+    expiresAt: Optional[str] = None
+    isActive: bool = True
+    description: str = ""
 
 class PaymentRejectInput(BaseModel):
     reason: str
@@ -475,6 +490,7 @@ async def public_site(slug: str):
     owner = await db.users.find_one({"id": site["userId"]}, {"_id": 0})
     if not is_owner_active(owner):
         return {"maintenance": True, "slug": slug, "businessName": site.get("businessName", "")}
+    await db.websites.update_one({"slug": slug}, {"$inc": {"pageViews": 1}})
     site["products"] = await db.products.find({"websiteId": site["id"]}, {"_id": 0}).sort("sortOrder", 1).to_list(200)
     site["maintenance"] = False
     return site
@@ -506,11 +522,32 @@ async def create_payment(data: PaymentCreateInput, user=Depends(current_user)):
     settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
     add_price = settings.get("additionalWebsitePrice", ADDITIONAL_WEBSITE_PRICE)
     extra = max(0, int(data.additionalWebsiteCount or 0))
-    if plan.get("slug") != "premium-3" and extra > 0:
-        raise HTTPException(400, "Tambahan website hanya tersedia untuk paket Premium 3")
+    if not plan.get("allowsAdditional") and extra > 0:
+        raise HTTPException(400, "Website tambahan hanya tersedia untuk paket Platinum")
     amount = float(plan["monthlyPrice"]) + extra * add_price
-    payment = {"id": uid(), "userId": user["id"], "userEmail": user["email"], "userName": user.get("name", ""), "planSlug": data.planSlug, "planName": plan["name"], "amount": amount, "additionalWebsiteCount": extra, "additionalWebsitePrice": add_price, "transferDate": data.transferDate, "proofUrl": data.proofUrl, "notes": data.notes, "status": "PENDING", "createdAt": now()}
+    # Apply coupon if provided
+    coupon = None
+    coupon_days_added = 0
+    if data.couponCode:
+        coupon = await db.coupons.find_one({"code": data.couponCode.upper().strip(), "isActive": True}, {"_id": 0})
+        if not coupon: raise HTTPException(400, "Kode kupon tidak valid")
+        if coupon.get("expiresAt", "") and coupon.get("expiresAt", "") < now():
+            raise HTTPException(400, "Kupon sudah kedaluwarsa")
+        if coupon.get("maxUses") and coupon.get("usedCount", 0) >= coupon["maxUses"]:
+            raise HTTPException(400, "Kupon sudah mencapai batas penggunaan")
+        dtype = coupon.get("discountType")
+        dval = float(coupon.get("discountValue", 0))
+        if dtype == "percentage":
+            amount = max(0, amount * (1 - dval / 100))
+        elif dtype == "fixed":
+            amount = max(0, amount - dval)
+        elif dtype == "days":
+            coupon_days_added = int(dval)
+    payment = {"id": uid(), "userId": user["id"], "userEmail": user["email"], "userName": user.get("name", ""), "planSlug": data.planSlug, "planName": plan["name"], "amount": amount, "originalAmount": float(plan["monthlyPrice"]) + extra * add_price, "additionalWebsiteCount": extra, "additionalWebsitePrice": add_price, "transferDate": data.transferDate, "proofUrl": data.proofUrl, "notes": data.notes, "couponCode": (coupon["code"] if coupon else ""), "couponDaysAdded": coupon_days_added, "status": "PENDING", "createdAt": now()}
     await db.payments.insert_one(payment)
+    if coupon:
+        await db.coupons.update_one({"code": coupon["code"]}, {"$inc": {"usedCount": 1}})
+        await db.coupon_redemptions.insert_one({"id": uid(), "couponCode": coupon["code"], "userId": user["id"], "paymentId": payment["id"], "redeemedAt": now()})
     await notify(user["id"], "Permintaan pembayaran diterima", f"Pembayaran {plan['name']} sebesar Rp{int(amount):,} sedang menunggu verifikasi admin.".replace(",", "."))
     return public(payment)
 
@@ -651,13 +688,20 @@ async def approve_payment(pid: str, admin=Depends(admin_user)):
     if not plan: raise HTTPException(400, "Paket tidak ditemukan")
     extra = int(p.get("additionalWebsiteCount", 0))
     quota_val = int(plan["websiteLimit"]) + extra
+    coupon_days = int(p.get("couponDaysAdded", 0))
+    days_total = 30 + coupon_days
     start = datetime.now(timezone.utc)
-    expiry = start + timedelta(days=30)
+    expiry = start + timedelta(days=days_total)
     await db.payments.update_one({"id": pid}, {"$set": {"status": "APPROVED", "reviewedAt": now(), "reviewedBy": admin["id"]}})
     await db.users.update_one({"id": p["userId"]}, {"$set": {"subscriptionStatus": "ACTIVE", "planSlug": p["planSlug"], "websiteQuota": quota_val, "additionalWebsiteQuota": extra, "subscriptionStartDate": start.isoformat(), "subscriptionExpiryDate": expiry.isoformat()}})
-    await notify(p["userId"], "Pembayaran disetujui", f"Berlangganan {plan['name']} sudah aktif hingga {expiry.strftime('%d %B %Y')}. Website Anda kembali online.")
+    bonus_note = f" (+ {coupon_days} hari bonus kupon)" if coupon_days else ""
+    await notify(p["userId"], "Pembayaran disetujui", f"Berlangganan {plan['name']} aktif hingga {expiry.strftime('%d %B %Y')}{bonus_note}. Website Anda kembali online.")
     await log_activity(admin["id"], "approve_payment", p["userId"], pid, f"Approved {plan['name']} for Rp{int(p['amount'])}")
-    return {"ok": True, "websiteQuota": quota_val, "expiry": expiry.isoformat()}
+    user = await db.users.find_one({"id": p["userId"]}, {"_id": 0})
+    settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
+    wa_message = f"Halo {user.get('name', '')}, pembayaran paket {plan['name']} sebesar Rp{int(p['amount']):,} telah disetujui. Berlangganan Anda aktif hingga {expiry.strftime('%d %B %Y')}{bonus_note}. Terima kasih telah menggunakan UsahaKu.".replace(",", ".")
+    wa_link = f"https://wa.me/{(user.get('whatsapp') or '').replace('+','').replace(' ','')}?text={wa_message}" if user.get('whatsapp') else ""
+    return {"ok": True, "websiteQuota": quota_val, "expiry": expiry.isoformat(), "userWhatsapp": user.get("whatsapp", ""), "whatsappMessage": wa_message, "adminWhatsapp": settings.get("adminWhatsapp", "")}
 
 @api.post("/admin/payments/{pid}/reject")
 async def reject_payment(pid: str, data: PaymentRejectInput, admin=Depends(admin_user)):
@@ -668,7 +712,9 @@ async def reject_payment(pid: str, data: PaymentRejectInput, admin=Depends(admin
     await db.payments.update_one({"id": pid}, {"$set": {"status": "REJECTED", "reviewedAt": now(), "reviewedBy": admin["id"], "adminNotes": data.reason}})
     await notify(p["userId"], "Pembayaran ditolak", f"Pembayaran ditolak: {data.reason}. Silakan submit ulang bukti pembayaran.")
     await log_activity(admin["id"], "reject_payment", p["userId"], pid, data.reason)
-    return {"ok": True}
+    user = await db.users.find_one({"id": p["userId"]}, {"_id": 0})
+    wa_message = f"Halo {user.get('name', '') if user else ''}, mohon maaf pembayaran paket {p.get('planName', '')} tidak dapat kami verifikasi. Alasan: {data.reason}. Silakan kirim ulang bukti transfer via UsahaKu."
+    return {"ok": True, "userWhatsapp": user.get("whatsapp", "") if user else "", "whatsappMessage": wa_message}
 
 @api.get("/admin/plans")
 async def admin_plans_list(_=Depends(admin_user)):
@@ -714,6 +760,84 @@ async def admin_settings_update(data: SettingsInput, admin=Depends(admin_user)):
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origin_regex=".*", allow_methods=["*"], allow_headers=["*"])
 
+# ========== Coupons, Demo Seed, Analytics ==========
+
+@api.post("/coupons/validate")
+async def validate_coupon(data: dict, user=Depends(current_user)):
+    code = str(data.get("code", "")).upper().strip()
+    if not code: raise HTTPException(400, "Kode kupon wajib diisi")
+    c = await db.coupons.find_one({"code": code, "isActive": True}, {"_id": 0})
+    if not c: raise HTTPException(404, "Kode kupon tidak ditemukan")
+    if c.get("expiresAt", "") and c.get("expiresAt", "") < now():
+        raise HTTPException(400, "Kupon sudah kedaluwarsa")
+    if c.get("maxUses") and c.get("usedCount", 0) >= c["maxUses"]:
+        raise HTTPException(400, "Kupon sudah mencapai batas penggunaan")
+    return {"code": c["code"], "discountType": c["discountType"], "discountValue": c["discountValue"], "description": c.get("description", "")}
+
+@api.get("/admin/coupons")
+async def admin_coupons(_=Depends(admin_user)):
+    return await db.coupons.find({}, {"_id": 0}).sort("createdAt", -1).to_list(200)
+
+@api.post("/admin/coupons")
+async def admin_create_coupon(data: CouponInput, admin=Depends(admin_user)):
+    code = data.code.upper().strip()
+    if not code: raise HTTPException(400, "Kode kupon wajib diisi")
+    if data.discountType not in ("percentage", "fixed", "days"):
+        raise HTTPException(400, "Tipe diskon tidak valid")
+    if await db.coupons.find_one({"code": code}):
+        raise HTTPException(409, "Kode kupon sudah ada")
+    doc = {"id": uid(), "code": code, "discountType": data.discountType, "discountValue": data.discountValue, "maxUses": data.maxUses, "usedCount": 0, "expiresAt": data.expiresAt or "", "isActive": data.isActive, "description": data.description, "createdAt": now()}
+    await db.coupons.insert_one(doc)
+    await log_activity(admin["id"], "create_coupon", None, code, f"{data.discountType}={data.discountValue}")
+    return public(doc)
+
+@api.put("/admin/coupons/{code}")
+async def admin_update_coupon(code: str, data: CouponInput, admin=Depends(admin_user)):
+    result = await db.coupons.update_one({"code": code.upper()}, {"$set": {"discountType": data.discountType, "discountValue": data.discountValue, "maxUses": data.maxUses, "expiresAt": data.expiresAt or "", "isActive": data.isActive, "description": data.description}})
+    if result.matched_count == 0: raise HTTPException(404, "Kupon tidak ditemukan")
+    await log_activity(admin["id"], "update_coupon", None, code.upper(), "")
+    return await db.coupons.find_one({"code": code.upper()}, {"_id": 0})
+
+@api.delete("/admin/coupons/{code}")
+async def admin_delete_coupon(code: str, admin=Depends(admin_user)):
+    result = await db.coupons.update_one({"code": code.upper()}, {"$set": {"isActive": False}})
+    if result.matched_count == 0: raise HTTPException(404, "Kupon tidak ditemukan")
+    await log_activity(admin["id"], "deactivate_coupon", None, code.upper(), "")
+    return {"ok": True}
+
+@api.post("/public/{slug}/track")
+async def track_event(slug: str, data: TrackInput):
+    field = "pageViews" if data.type == "view" else "whatsappClicks" if data.type == "whatsapp" else None
+    if not field: raise HTTPException(400, "Tipe tidak dikenal")
+    await db.websites.update_one({"slug": slug, "status": "PUBLISHED"}, {"$inc": {field: 1}})
+    return {"ok": True}
+
+@api.get("/websites/{site_id}/analytics")
+async def website_analytics(site_id: str, user=Depends(current_user)):
+    site = await owned_site(site_id, user)
+    return {"pageViews": site.get("pageViews", 0), "whatsappClicks": site.get("whatsappClicks", 0)}
+
+@api.post("/demo/seed")
+async def demo_seed(user=Depends(current_user)):
+    user = await refresh_status(user)
+    if not is_owner_active(user):
+        raise HTTPException(403, "Aktifkan trial atau berlangganan untuk memakai demo.")
+    count = await db.websites.count_documents({"userId": user["id"]})
+    q = quota_for(user)
+    if count >= q:
+        raise HTTPException(403, "Limit website Anda sudah tercapai. Silakan upgrade paket.")
+    website = {"id": uid(), "userId": user["id"], "businessName": "Kopi Senja", "category": "Coffee Shop", "description": "Kedai kopi kecil dengan biji lokal pilihan dan suasana hangat. Cocok untuk bersantai, berbincang, atau bekerja santai.", "logoUrl": "", "coverImageUrl": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1600&auto=format&fit=crop", "whatsapp": "6281234567890", "phone": "", "email": "halo@kopisenja.id", "instagram": "@kopisenja", "facebook": "", "tiktok": "", "address": "Jl. Kemang Raya No. 12", "city": "Jakarta Selatan", "province": "DKI Jakarta", "postalCode": "12730", "latitude": None, "longitude": None, "customDomain": "", "status": "DRAFT", "slug": "", "themeConfig": {"primary": "#166534", "accent": "#14532D", "style": "warm"}, "aiGeneratedContent": {"heroTitle": "Temukan jeda di setiap teguk.", "heroSubtitle": "Kopi pilihan, suasana hangat, dan cerita yang dekat setiap hari.", "heroCta": "Jelajahi menu", "about": "Kopi Senja adalah kedai kopi kecil di Kemang yang menyajikan biji kopi lokal pilihan. Kami percaya kopi bukan hanya minuman—tapi jeda hangat di tengah hari yang sibuk.", "highlights": ["Biji kopi lokal pilihan", "Suasana hangat & tenang", "Cocok untuk santai dan kerja"], "productHeadline": "Menu favorit", "primaryColor": "#166534", "accentColor": "#14532D", "style": "warm"}, "businessHours": [], "createdAt": now(), "updatedAt": now()}
+    await db.websites.insert_one(website)
+    demo_products = [
+        {"name": "Es Kopi Gula Aren", "description": "Kopi susu dengan gula aren khas, disajikan dingin.", "price": 28000, "images": []},
+        {"name": "Matcha Latte", "description": "Matcha premium dengan susu segar.", "price": 32000, "images": []},
+        {"name": "Americano", "description": "Espresso murni dengan air panas.", "price": 24000, "images": []},
+        {"name": "Croissant Coklat", "description": "Croissant butter dengan isian coklat lumer.", "price": 22000, "images": []},
+    ]
+    for i, p in enumerate(demo_products):
+        await db.products.insert_one({"id": uid(), "websiteId": website["id"], **p, "category": "", "sortOrder": i, "createdAt": now()})
+    return public(website)
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
@@ -723,10 +847,17 @@ async def startup():
     await db.websites.create_index("slug", unique=True, name="slug_unique_nonempty", partialFilterExpression={"slug": {"$gt": ""}})
     await db.payments.create_index("userId")
     await db.notifications.create_index("userId")
+    await db.coupons.create_index("code", unique=True)
+    # Migrate old plans
+    await db.plans.delete_many({"slug": {"$in": ["premium-1", "premium-3"]}})
     for plan in DEFAULT_PLANS:
         existing = await db.plans.find_one({"slug": plan["slug"]})
         if not existing:
             await db.plans.insert_one({**plan, "createdAt": now()})
+    # Migrate old user planSlug values
+    await db.users.update_many({"planSlug": "premium-1"}, {"$set": {"planSlug": "basic"}})
+    await db.users.update_many({"planSlug": "premium-3", "additionalWebsiteQuota": {"$gt": 0}}, {"$set": {"planSlug": "platinum"}})
+    await db.users.update_many({"planSlug": "premium-3"}, {"$set": {"planSlug": "premium"}})
     if not await db.settings.find_one({"id": "platform"}):
         await db.settings.insert_one({**DEFAULT_SETTINGS, "createdAt": now()})
     if not await db.users.find_one({"email": os.environ["ADMIN_EMAIL"].lower()}):

@@ -167,8 +167,9 @@ export default function Landing() {
           </div>
           <div className="pricing-grid">
             <Price testid="price-trial-button" name="Trial Gratis" price="Rp0" desc="30 hari pertama" items={["1 website", "AI generation & editing", "Katalog produk", "WhatsApp & Google Maps"]} />
-            <Price testid="price-premium-1-button" featured name="Premium 1" price="Rp50.000" desc="per bulan" items={["1 website", "Semua fitur AI", "Katalog tanpa batas", "Dukungan prioritas"]} />
-            <Price testid="price-premium-3-button" name="Premium 3" price="Rp100.000" desc="per bulan" items={["Hingga 3 website", "Semua fitur AI", "Tambah website +Rp25.000", "Dukungan prioritas"]} />
+            <Price testid="price-basic-button" name="Basic" price="Rp50.000" desc="per bulan" items={["1 website", "Semua fitur AI", "Katalog tanpa batas", "Dukungan prioritas"]} />
+            <Price testid="price-premium-button" featured name="Premium" price="Rp100.000" desc="per bulan" items={["3 website", "Semua fitur AI", "Katalog tanpa batas", "Dukungan prioritas"]} />
+            <Price testid="price-platinum-button" name="Platinum" price="Rp100.000" desc="per bulan · fleksibel" items={["3 website + bisa ditambah", "+Rp25.000 per website tambahan", "Semua fitur AI", "Dukungan prioritas"]} />
           </div>
         </section>
 

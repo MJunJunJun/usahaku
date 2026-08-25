@@ -23,18 +23,39 @@ const WebsiteCard = ({ w }) => (
   </Link>
 );
 
-const EmptyState = () => (
-  <div className="empty-state">
-    <div className="empty-icon"><Store /></div>
-    <h3>Belum ada website</h3>
-    <p>Mulai digitalisasi bisnis kamu dengan membuat website pertama.</p>
-    <Link data-testid="empty-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />Buat website</Link>
-  </div>
-);
+const planName = (slug) => ({ trial: "Trial Gratis", basic: "Basic", premium: "Premium", platinum: "Platinum" })[slug] || "Trial";
 
-const TrialBanner = ({ user }) => {
+const EmptyState = () => {
+  const nav = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const seedDemo = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post("/demo/seed");
+      nav(`/dashboard/websites/${r.data.id}`);
+    } catch (e) { alert(errorText(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="empty-state">
+      <div className="empty-icon"><Store /></div>
+      <h3>Belum ada website</h3>
+      <p>Mulai digitalisasi bisnis kamu dengan membuat website pertama, atau coba dulu dengan contoh bisnis.</p>
+      <div className="empty-actions">
+        <Link data-testid="empty-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />Buat website</Link>
+        <button data-testid="empty-demo-button" className="btn btn-outline" onClick={seedDemo} disabled={busy}>
+          <Sparkles size={16} />{busy ? "Menyiapkan..." : "Coba dengan demo Kopi Senja"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const TrialBanner = ({ user, websiteCount }) => {
   const status = user.subscriptionStatus;
   if (status === "ACTIVE") return null;
+  // Don't show trial banner if user hasn't created any website yet (avoid urgency for brand-new users)
+  if (status === "TRIAL_ACTIVE" && websiteCount === 0) return null;
   const trial = daysUntil(user.trialEndDate);
   let label, sub, variant = "";
   if (status === "TRIAL_ACTIVE") {
@@ -69,7 +90,7 @@ export function Dashboard() {
         </div>
         <Link data-testid="dashboard-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />Buat website</Link>
       </div>
-      <TrialBanner user={u} />
+      <TrialBanner user={u} websiteCount={data.stats.total} />
       <div className="stat-grid">
         <Stat label="Total website" value={data.stats.total} icon="◈" />
         <Stat label="Sudah publish" value={data.stats.published} icon="↗" />
@@ -89,7 +110,7 @@ export function Dashboard() {
           <Link data-testid="manage-subscription-link" className="text-link" to="/dashboard/subscription">Kelola <ChevronRight size={16} /></Link>
         </div>
         <div className="sub-summary">
-          <div><small>PAKET</small><b>{u.planSlug === "trial" ? "Trial Gratis" : u.planSlug === "premium-1" ? "Premium 1" : u.planSlug === "premium-3" ? "Premium 3" : (u.planSlug || "Trial")}</b></div>
+          <div><small>PAKET</small><b>{planName(u.planSlug)}</b></div>
           <div><small>WEBSITE</small><b>{data.stats.total} / {data.quota}</b></div>
           <div><small>{u.subscriptionStatus === "TRIAL_ACTIVE" ? "TRIAL BERAKHIR" : "BERAKHIR"}</small><b>{formatDate(u.subscriptionStatus === "TRIAL_ACTIVE" ? u.trialEndDate : u.subscriptionExpiryDate)}</b></div>
           <div><small>STATUS</small><StatusBadge status={u.subscriptionStatus} /></div>
@@ -290,11 +311,13 @@ export function WebsiteDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const [w, setW] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [busy, setBusy] = useState(false);
   const [command, setCommand] = useState("");
   const [device, setDevice] = useState("desktop");
   const load = () => api.get(`/websites/${id}`).then(r => setW(r.data));
-  useEffect(() => { load(); }, [id]);
+  const loadAnalytics = () => api.get(`/websites/${id}/analytics`).then(r => setAnalytics(r.data)).catch(() => {});
+  useEffect(() => { load(); loadAnalytics(); }, [id]);
   if (!w) return <Loading text="Menyiapkan website..." />;
 
   const generate = async () => {
@@ -333,6 +356,13 @@ export function WebsiteDetail() {
       </div>
       <div className="editor-layout">
         <div className="preview-frame">
+          {w.status === "PUBLISHED" && analytics && (
+            <div className="analytics-strip" data-testid="analytics-strip">
+              <div><small>KUNJUNGAN</small><b>{analytics.pageViews || 0}</b></div>
+              <div><small>KLIK WHATSAPP</small><b>{analytics.whatsappClicks || 0}</b></div>
+              {w.customDomain && <div><small>DOMAIN</small><b>{w.customDomain}</b></div>}
+            </div>
+          )}
           <div className="preview-toolbar">
             <span><i className="status-dot" /> Live preview</span>
             <div>
@@ -397,7 +427,7 @@ export function ManualEdit() {
   const save = async () => {
     setSaving(true); setErr("");
     try {
-      const payload = { businessName: w.businessName, category: w.category, description: w.description, logoUrl: w.logoUrl, coverImageUrl: w.coverImageUrl, whatsapp: w.whatsapp, phone: w.phone, email: w.email, instagram: w.instagram, facebook: w.facebook, tiktok: w.tiktok, address: w.address, city: w.city, province: w.province };
+      const payload = { businessName: w.businessName, category: w.category, description: w.description, logoUrl: w.logoUrl, coverImageUrl: w.coverImageUrl, whatsapp: w.whatsapp, phone: w.phone, email: w.email, instagram: w.instagram, facebook: w.facebook, tiktok: w.tiktok, address: w.address, city: w.city, province: w.province, customDomain: w.customDomain || "" };
       await api.put(`/websites/${id}`, payload);
       await api.put(`/websites/${id}/theme`, { primary: w.themeConfig?.primary, accent: w.themeConfig?.accent, style: w.themeConfig?.style, heroTitle: w.aiGeneratedContent?.heroTitle, heroSubtitle: w.aiGeneratedContent?.heroSubtitle, about: w.aiGeneratedContent?.about });
       nav(`/dashboard/websites/${id}`);
@@ -457,6 +487,9 @@ export function ManualEdit() {
           <label className="full">Alamat<input data-testid="edit-address" value={w.address || ""} onChange={e => set("address", e.target.value)} /></label>
           <label>Kota<input data-testid="edit-city" value={w.city || ""} onChange={e => set("city", e.target.value)} /></label>
           <label>Provinsi<input data-testid="edit-province" value={w.province || ""} onChange={e => set("province", e.target.value)} /></label>
+          <label className="full">Domain custom (opsional · fitur Platinum)
+            <input data-testid="edit-custom-domain" value={w.customDomain || ""} onChange={e => set("customDomain", e.target.value)} placeholder="Contoh: kopisenja.com — hubungi admin untuk aktivasi DNS" />
+          </label>
         </div>
         <div className="eyebrow" style={{ marginTop: 32 }}>WARNA TEMA</div>
         <div className="form-grid">

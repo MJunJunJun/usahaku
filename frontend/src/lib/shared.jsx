@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, LogOut, Plus, Sparkles, Store, CreditCard, Settings, Bell, Users, ClipboardList, ScrollText, Cog } from "lucide-react";
+import { LayoutDashboard, LogOut, Plus, Sparkles, Store, CreditCard, Settings, Bell, Users, ClipboardList, ScrollText, Cog, Ticket } from "lucide-react";
 import { api, daysUntil } from "./api";
 
 export const Brand = ({ light = false, mini = false }) => (
@@ -31,7 +31,7 @@ export const useUser = (redirectOnFail = "/login") => {
   return user;
 };
 
-export const UserSidebar = ({ user }) => {
+export const UserSidebar = ({ user, showTrial = true }) => {
   const nav = useNavigate();
   const trial = daysUntil(user.trialEndDate);
   const status = user.subscriptionStatus;
@@ -44,23 +44,26 @@ export const UserSidebar = ({ user }) => {
       <Link data-testid="sidebar-websites" to="/dashboard/websites"><Store size={17} />Website saya</Link>
       <Link data-testid="sidebar-create" to="/dashboard/websites/create" className="side-create"><Plus size={17} />Buat website</Link>
       <Link data-testid="sidebar-subscription" to="/dashboard/subscription"><CreditCard size={17} />Paket & billing</Link>
+      <Link data-testid="sidebar-coupons" to="/dashboard/coupons"><Ticket size={17} />Kupon saya</Link>
       <Link data-testid="sidebar-notifications" to="/dashboard/notifications"><Bell size={17} />Notifikasi</Link>
       <div className="side-spacer" />
-      <div className="trial-mini">
-        <Sparkles size={16} />
-        <b>
-          {status === "TRIAL_ACTIVE" && "Trial gratis"}
-          {status === "ACTIVE" && "Berlangganan aktif"}
-          {status === "TRIAL_EXPIRED" && "Trial berakhir"}
-          {status === "EXPIRED" && "Berlangganan berakhir"}
-        </b>
-        <span>
-          {status === "TRIAL_ACTIVE" && `${trial} hari tersisa`}
-          {status === "ACTIVE" && `${expiryDays} hari tersisa`}
-          {(status === "TRIAL_EXPIRED" || status === "EXPIRED") && "Perpanjang untuk lanjut"}
-        </span>
-        <Link data-testid="sidebar-manage-plan" to="/dashboard/subscription">Kelola paket →</Link>
-      </div>
+      {showTrial && (
+        <div className="trial-mini">
+          <Sparkles size={16} />
+          <b>
+            {status === "TRIAL_ACTIVE" && "Trial gratis"}
+            {status === "ACTIVE" && "Berlangganan aktif"}
+            {status === "TRIAL_EXPIRED" && "Trial berakhir"}
+            {status === "EXPIRED" && "Berlangganan berakhir"}
+          </b>
+          <span>
+            {status === "TRIAL_ACTIVE" && `${trial} hari tersisa`}
+            {status === "ACTIVE" && `${expiryDays} hari tersisa`}
+            {(status === "TRIAL_EXPIRED" || status === "EXPIRED") && "Perpanjang untuk lanjut"}
+          </span>
+          <Link data-testid="sidebar-manage-plan" to="/dashboard/subscription">Kelola paket →</Link>
+        </div>
+      )}
       <button data-testid="sidebar-logout" className="logout" onClick={async () => { await api.post("/auth/logout"); nav("/"); }}>
         <LogOut size={16} />Keluar
       </button>
@@ -79,6 +82,7 @@ export const AdminSidebar = () => {
       <Link data-testid="admin-sidebar-websites" to="/admin/websites"><Store size={17} />Website</Link>
       <Link data-testid="admin-sidebar-payments" to="/admin/payment-requests"><ClipboardList size={17} />Pembayaran</Link>
       <Link data-testid="admin-sidebar-plans" to="/admin/plans"><CreditCard size={17} />Paket</Link>
+      <Link data-testid="admin-sidebar-coupons" to="/admin/coupons"><Ticket size={17} />Kupon</Link>
       <Link data-testid="admin-sidebar-logs" to="/admin/activity-logs"><ScrollText size={17} />Aktivitas</Link>
       <Link data-testid="admin-sidebar-settings" to="/admin/settings"><Cog size={17} />Pengaturan</Link>
       <div className="side-spacer" />
@@ -92,9 +96,16 @@ export const AdminSidebar = () => {
 
 export const UserShell = ({ children }) => {
   const user = useUser();
+  const [websiteCount, setWebsiteCount] = useState(null);
+  useEffect(() => {
+    if (user && user.role !== "ADMIN") {
+      api.get("/dashboard").then(r => setWebsiteCount(r.data.stats.total)).catch(() => setWebsiteCount(0));
+    }
+  }, [user]);
   if (!user) return <Loading text="Menyiapkan ruang kerja..." />;
   if (user.role === "ADMIN") return <AdminShell>{children}</AdminShell>;
-  return <div className="app-shell"><UserSidebar user={user} /><main className="app-main">{children}</main></div>;
+  const showTrial = (websiteCount === null) ? false : (user.subscriptionStatus !== "TRIAL_ACTIVE" || websiteCount > 0);
+  return <div className="app-shell"><UserSidebar user={user} showTrial={showTrial} /><main className="app-main">{children}</main></div>;
 };
 
 export const AdminShell = ({ children }) => {

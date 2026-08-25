@@ -41,7 +41,7 @@ export function AuthPage({ register = false }) {
         <div className="auth-form">
           <div className="eyebrow">{register ? "MULAI GRATIS" : "SELAMAT DATANG KEMBALI"}</div>
           <h2>{register ? "Buat website pertamamu." : "Masuk ke UsahaKu."}</h2>
-          <p>{register ? "Trial gratis 30 hari, tanpa kartu kredit." : "Kelola semua website usahamu dari satu tempat."}</p>
+          <p>{register ? "Ayo mulai buat website usahamu." : "Kelola semua website usahamu dari satu tempat."}</p>
           <form onSubmit={submit}>
             {register && (
               <label>Nama lengkap
