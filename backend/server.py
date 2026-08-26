@@ -10,11 +10,34 @@ from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+    HAS_EMERGENT = True
+except ImportError:
+    HAS_EMERGENT = False
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+try:
+    from mongomock_motor import AsyncMongoMockClient
+    HAS_MONGOMOCK = True
+except ImportError:
+    HAS_MONGOMOCK = False
+
+class DatabaseProxy:
+    def __init__(self):
+        self._db = None
+    def set_db(self, actual_db):
+        self._db = actual_db
+    def __getattr__(self, name):
+        return getattr(self._db, name)
+    def __getitem__(self, name):
+        return self._db[name]
+
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+db_name = os.environ.get('DB_NAME', 'usahaku')
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=2000)
+db_proxy = DatabaseProxy()
+db_proxy.set_db(client[db_name])
+db = db_proxy
 app = FastAPI(title="UsahaKu API")
 api = APIRouter(prefix="/api")
 log = logging.getLogger("usahaku")
@@ -150,6 +173,41 @@ class ThemeInput(BaseModel):
     heroSubtitle: Optional[str] = None
     about: Optional[str] = None
 
+class HighlightCardInput(BaseModel):
+    title: str = ""
+    desc: str = ""
+    icon: str = "ShieldCheck"
+
+class TestimonialCardInput(BaseModel):
+    name: str = ""
+    role: str = ""
+    comment: str = ""
+    rating: int = 5
+
+class FaqItemInput(BaseModel):
+    q: str = ""
+    a: str = ""
+
+class ContactCardsInput(BaseModel):
+    address: bool = True
+    hours: bool = True
+    social: bool = True
+
+class SectionsConfigInput(BaseModel):
+    highlightsVisible: Optional[bool] = None
+    testimonialsVisible: Optional[bool] = None
+    faqVisible: Optional[bool] = None
+    contactVisible: Optional[bool] = None
+    contactCards: Optional[ContactCardsInput] = None
+    mapsUrl: Optional[str] = None
+    highlights: Optional[List[HighlightCardInput]] = None
+    testimonials: Optional[List[TestimonialCardInput]] = None
+    faq: Optional[List[FaqItemInput]] = None
+    businessHours: Optional[str] = None
+
+DEFAULT_SECTION_VISIBILITY = {"highlights": True, "testimonials": True, "faq": True, "contact": True}
+DEFAULT_CONTACT_CARDS = {"address": True, "hours": True, "social": True}
+
 class PaymentCreateInput(BaseModel):
     planSlug: str
     additionalWebsiteCount: int = 0
@@ -201,13 +259,20 @@ class ResetInput(BaseModel):
 class ForgotInput(BaseModel):
     email: EmailStr
 
+UPLOAD_DIR = ROOT_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 def init_storage():
     global storage_key
     if storage_key: return storage_key
-    r = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
-    r.raise_for_status()
-    storage_key = r.json()["storage_key"]
-    return storage_key
+    if not os.environ.get("EMERGENT_LLM_KEY"): return None
+    try:
+        r = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=10)
+        r.raise_for_status()
+        storage_key = r.json()["storage_key"]
+        return storage_key
+    except Exception:
+        return None
 
 @api.post("/uploads")
 async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
@@ -218,15 +283,21 @@ async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(400, "Ukuran file maksimal 8MB")
     ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "bin").lower()
-    path = f"usahaku/uploads/{user['id']}/{uuid.uuid4()}.{ext}"
+    file_id = uid()
+    local_file_path = UPLOAD_DIR / f"{file_id}.{ext}"
+    with open(local_file_path, "wb") as f:
+        f.write(data)
+
+    cloud_path = f"usahaku/uploads/{user['id']}/{file_id}.{ext}"
     try:
         key = init_storage()
-        r = requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": file.content_type}, data=data, timeout=120)
-        r.raise_for_status()
-    except Exception as exc:
-        log.exception("Upload failed")
-        raise HTTPException(502, "Upload belum berhasil. Silakan coba lagi.") from exc
-    record = {"id": uid(), "userId": user["id"], "storagePath": r.json().get("path", path), "contentType": file.content_type, "originalFilename": file.filename, "size": len(data), "createdAt": now()}
+        if key:
+            r = requests.put(f"{STORAGE_URL}/objects/{cloud_path}", headers={"X-Storage-Key": key, "Content-Type": file.content_type}, data=data, timeout=15)
+            if r.ok: cloud_path = r.json().get("path", cloud_path)
+    except Exception:
+        pass
+
+    record = {"id": file_id, "userId": user["id"], "localPath": str(local_file_path), "storagePath": cloud_path, "contentType": file.content_type, "originalFilename": file.filename, "size": len(data), "createdAt": now()}
     await db.files.insert_one(record)
     return {"id": record["id"], "url": f"/api/uploads/{record['id']}", "contentType": file.content_type}
 
@@ -234,13 +305,18 @@ async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
 async def download_file(file_id: str):
     rec = await db.files.find_one({"id": file_id}, {"_id": 0})
     if not rec: raise HTTPException(404, "File tidak ditemukan")
+    if rec.get("localPath") and os.path.exists(rec["localPath"]):
+        with open(rec["localPath"], "rb") as f:
+            return Response(content=f.read(), media_type=rec["contentType"])
     try:
         key = init_storage()
-        r = requests.get(f"{STORAGE_URL}/objects/{rec['storagePath']}", headers={"X-Storage-Key": key}, timeout=60)
-        r.raise_for_status()
+        if key:
+            r = requests.get(f"{STORAGE_URL}/objects/{rec['storagePath']}", headers={"X-Storage-Key": key}, timeout=15)
+            r.raise_for_status()
+            return Response(content=r.content, media_type=rec["contentType"])
     except Exception as exc:
-        raise HTTPException(404, "File tidak tersedia") from exc
-    return Response(content=r.content, media_type=rec["contentType"])
+        pass
+    raise HTTPException(404, "File tidak tersedia")
 
 @api.get("/")
 async def root(): return {"message": "UsahaKu API aktif"}
@@ -333,7 +409,7 @@ async def create_website(data: WebsiteInput, user=Depends(current_user)):
     q = quota_for(user)
     if count >= q:
         raise HTTPException(403, "Limit website Anda sudah tercapai. Silakan upgrade paket atau tambah kuota website.")
-    website = {"id": uid(), "userId": user["id"], **data.model_dump(), "status": "DRAFT", "slug": "", "themeConfig": {"primary": "#16A34A", "style": "modern"}, "aiGeneratedContent": {}, "businessHours": [], "createdAt": now(), "updatedAt": now()}
+    website = {"id": uid(), "userId": user["id"], **data.model_dump(), "status": "DRAFT", "slug": "", "themeConfig": {"primary": "#16A34A", "style": "modern"}, "aiGeneratedContent": {}, "businessHours": [], "sectionVisibility": dict(DEFAULT_SECTION_VISIBILITY), "contactCards": dict(DEFAULT_CONTACT_CARDS), "mapsUrl": "", "createdAt": now(), "updatedAt": now()}
     await db.websites.insert_one(website)
     return public(website)
 
@@ -366,6 +442,27 @@ async def update_theme(site_id: str, data: ThemeInput, user=Depends(current_user
     if data.heroSubtitle is not None: ai["heroSubtitle"] = data.heroSubtitle
     if data.about is not None: ai["about"] = data.about
     await db.websites.update_one({"id": site_id}, {"$set": {"themeConfig": theme, "aiGeneratedContent": ai, "updatedAt": now()}})
+    return await get_website(site_id, user)
+
+@api.put("/websites/{site_id}/sections")
+async def update_sections(site_id: str, data: SectionsConfigInput, user=Depends(current_user)):
+    site = await owned_site(site_id, user)
+    vis = {**DEFAULT_SECTION_VISIBILITY, **(site.get("sectionVisibility") or {})}
+    if data.highlightsVisible is not None: vis["highlights"] = data.highlightsVisible
+    if data.testimonialsVisible is not None: vis["testimonials"] = data.testimonialsVisible
+    if data.faqVisible is not None: vis["faq"] = data.faqVisible
+    if data.contactVisible is not None: vis["contact"] = data.contactVisible
+    updates = {"sectionVisibility": vis, "updatedAt": now()}
+    if data.contactCards is not None:
+        updates["contactCards"] = {**DEFAULT_CONTACT_CARDS, **data.contactCards.model_dump(exclude_none=True)}
+    if data.mapsUrl is not None: updates["mapsUrl"] = (data.mapsUrl or "").strip()
+    ai = {**(site.get("aiGeneratedContent") or {})}
+    if data.highlights is not None: ai["highlights"] = [h.model_dump() for h in data.highlights][:6]
+    if data.testimonials is not None: ai["testimonials"] = [t.model_dump() for t in data.testimonials][:9]
+    if data.faq is not None: ai["faq"] = [f.model_dump() for f in data.faq][:10]
+    if data.businessHours is not None: ai["businessHours"] = data.businessHours
+    updates["aiGeneratedContent"] = ai
+    await db.websites.update_one({"id": site_id}, {"$set": updates})
     return await get_website(site_id, user)
 
 @api.delete("/websites/{site_id}")
@@ -404,30 +501,314 @@ async def delete_product(product_id: str, user=Depends(current_user)):
     await db.products.delete_one({"id": product_id})
     return {"ok": True}
 
+CATEGORY_KNOWLEDGE = {
+    "kopi": {
+        "badge": "☕ CITARASA KOPI OTENTIK",
+        "heroTitle": "Temukan Jeda di Setiap Tegukan Kopi Pilihan.",
+        "heroSubtitle": "Disajikan dari biji kopi lokal terbaik dengan racikan barista berpengalaman.",
+        "cta": "Lihat Menu & Pesan",
+        "about": "Kami hadir untuk menemani setiap momen berharga Anda. Dengan biji kopi pilihan nusantara yang disangrai sempurna, kami menyajikan kenikmatan rasa dan suasana hangat untuk bekerja, berbincang, atau sekadar melepas lelah.",
+        "highlights": [
+            {"title": "Biji Kopi Nusantara", "desc": "100% biji kopi lokal pilihan berkualitas premium.", "icon": "Coffee"},
+            {"title": "Racikan Barista Ahli", "desc": "Konsistensi rasa terjaga di setiap cangkir kopi.", "icon": "Sparkles"},
+            {"title": "Order WhatsApp Cepat", "desc": "Pesan takeaway atau dine-in tanpa antre panjang.", "icon": "MessageCircle"}
+        ],
+        "headline": "Menu Kopi & Cemilan Favorit",
+        "subheadline": "Pilihan racikan kopi segar dan camilan lezat pendamping hari Anda.",
+        "primary": "#166534", "accent": "#14532D", "style": "warm",
+        "cover": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Apakah bisa pesan untuk acara atau catering?", "a": "Tentu saja! Kami melayani pemesanan paket kopi botolan dan booth kopi untuk acara kantor, ulang tahun, atau pernikahan."},
+            {"q": "Bagaimana cara memesan lewat WhatsApp?", "a": "Pilih menu favorit Anda di atas, klik tombol 'Pesan via WhatsApp', dan pesan otomatis akan terkirim ke barista kami."},
+            {"q": "Tersedia pilihan susu non-dairy?", "a": "Ya, kami menyediakan opsi Oat Milk dan Soy Milk untuk beberapa varian minuman."}
+        ],
+        "testimonials": [
+            {"name": "Dimas Anggara", "role": "Penikmat Kopi", "comment": "Kopi susunya juara! Manisnya pas dan aroma kopinya kuat banget. Tempat andalan kalau WFC.", "rating": 5},
+            {"name": "Sarah Oktaviani", "role": "Pelanggan", "comment": "Pelayanan cepat dan ramah, kemasan takeaway-nya juga aman dan rapi.", "rating": 5}
+        ]
+    },
+    "makanan": {
+        "badge": "🍲 CITA RASA SPESIAL & HIGIENIS",
+        "heroTitle": "Sajian Lezat Penuh Rasa untuk Keluarga Anda.",
+        "heroSubtitle": "Resep istimewa dengan bahan rempah segar pilihan yang memanjakan lidah.",
+        "cta": "Pesan Menu Sekarang",
+        "about": "Menghadirkan kehangatan masakan dengan resep warisan keluarga yang diolah secara higienis. Kami percaya bahwa makanan enak berawal dari bahan segar dan ketulusan dalam menyajikan setiap porsi.",
+        "highlights": [
+            {"title": "Bahan Segar Setiap Hari", "desc": "Tanpa bahan pengawet, diolah langsung dari bahan segar.", "icon": "ShieldCheck"},
+            {"title": "Rempah Otentik", "desc": "Perpaduan bumbu kaya rasa yang meresap sempurna.", "icon": "Flame"},
+            {"title": "Pengiriman Cepat & Hangat", "desc": "Dikemas higienis agar sampai dalam kondisi terbaik.", "icon": "Truck"}
+        ],
+        "headline": "Pilihan Menu Terfavorit",
+        "subheadline": "Daftar hidangan lezat yang paling sering dipesan pelanggan setia.",
+        "primary": "#DC2626", "accent": "#991B1B", "style": "warm",
+        "cover": "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Apakah menerima pesanan nasi box / katering?", "a": "Ya, kami menerima pesanan nasi box dalam jumlah besar untuk berbagai acara dengan konfirmasi H-1."},
+            {"q": "Bagaimana cara melakukan pembayaran?", "a": "Kami menerima transfer bank, QRIS (GoPay, OVO, ShopeePay, Dana), serta tunai saat pick-up."},
+            {"q": "Berapa lama estimasi pengiriman?", "a": "Estimasi 20-40 menit tergantung jarak lokasi pengantaran."}
+        ],
+        "testimonials": [
+            {"name": "Hendra Kurniawan", "role": "Pelanggan", "comment": "Porsinya banyak, rasanya nagih! Bumbu rempahnya bener-bener berasa dan dagingnya empuk.", "rating": 5},
+            {"name": "Maya Sasmita", "role": "Food Enthusiast", "comment": "Pesan catering untuk syukuran kantor, semua teman kantor bilang enak banget!", "rating": 5}
+        ]
+    },
+    "bakery": {
+        "badge": "🥐 FRESH FROM THE OVEN",
+        "heroTitle": "Roti & Kue Lembut dengan Aroma Menggoda.",
+        "heroSubtitle": "Dipanggang setiap pagi menggunakan butter premium pilihan tanpa bahan pengawet.",
+        "cta": "Pesan Kue & Roti",
+        "about": "Setiap gigitan roti dan kue kami adalah perpaduan kelembutan tekstur dan rasa manis yang pas. Kami memanggang setiap hari untuk memastikan kesegaran kualitas terbaik di meja makan Anda.",
+        "highlights": [
+            {"title": "Dipanggang Segar Tiap Hari", "desc": "Selalu fresh langsung dari oven setiap pagi.", "icon": "Sparkles"},
+            {"title": "100% Butter Premium", "desc": "Rasa gurih alami tanpa pemanis buatan berlebih.", "icon": "Award"},
+            {"title": "Custom Cake & Hampers", "desc": "Bisa custom ucapan untuk ulang tahun dan hari raya.", "icon": "Gift"}
+        ],
+        "headline": "Koleksi Roti & Pastry Terbaik",
+        "subheadline": "Temukan varian roti manis, gurih, dan kue spesial hari ini.",
+        "primary": "#D97706", "accent": "#78350F", "style": "warm",
+        "cover": "https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Apakah kue bisa dikirim ke luar kota?", "a": "Untuk cookies dan roti kering bisa dikirim ke luar kota dengan packaging bubble wrap tebal."},
+            {"q": "Berapa lama ketahanan roti?", "a": "Karena tanpa pengawet, roti kami bertahan 3-4 hari di suhu ruang atau 1 minggu di dalam kulkas."}
+        ],
+        "testimonials": [
+            {"name": "Lestari Putri", "role": "Pelanggan", "comment": "Rotinya lembut banget bahkan sampai hari ketiga! Isian coklatnya juga melimpah.", "rating": 5}
+        ]
+    },
+    "fashion": {
+        "badge": "✨ TAMPIL PERCAYA DIRI & MODIS",
+        "heroTitle": "Koleksi Busana Trendy & Nyaman Setiap Hari.",
+        "heroSubtitle": "Pilihan outfit modern dengan bahan berkualitas tinggi dan potongan yang presisi.",
+        "cta": "Lihat Katalog Koleksi",
+        "about": "Kami percaya bahwa gaya adalah ekspresi diri yang menyenangkan. Koleksi kami dirancang untuk menemani aktivitas harian Anda dengan bahan adem, jahitan rapi, dan desain yang selalu up-to-date.",
+        "highlights": [
+            {"title": "Bahan Nyaman & Adem", "desc": "Pilihan kain premium yang nyaman dipakai seharian.", "icon": "ShieldCheck"},
+            {"title": "Model Selalu Update", "desc": "Desain kekinian yang cocok untuk casual maupun formal.", "icon": "Sparkles"},
+            {"title": "Garansi Tukar Ukuran", "desc": "Kemudahan retur jika ukuran tidak sesuai.", "icon": "Award"}
+        ],
+        "headline": "Koleksi Paling Populer",
+        "subheadline": "Pilihan outfit favorit yang siap melengkapi penampilan terbaik Anda.",
+        "primary": "#4F46E5", "accent": "#312E81", "style": "elegant",
+        "cover": "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Bagaimana panduan ukurannya?", "a": "Setiap produk dilengkapi size chart detail. Anda juga bisa konsultasi ukuran via WhatsApp langsung dengan tim kami."},
+            {"q": "Apakah bisa kirim ke seluruh Indonesia?", "a": "Ya, kami bekerja sama dengan berbagai ekspedisi reguler maupun kilat ke seluruh Indonesia."}
+        ],
+        "testimonials": [
+            {"name": "Bella Anindya", "role": "Pelanggan", "comment": "Jahitannya sangat rapi, bahannya jatuh dan adem banget saat dipakai. Bakal langganan terus!", "rating": 5}
+        ]
+    },
+    "salon": {
+        "badge": "💆 PERAWATAN TERBAIK UNTUK ANDA",
+        "heroTitle": "Tampil Lebih Segar, Percaya Diri, dan Memukau.",
+        "heroSubtitle": "Layanan perawatan kecantikan dan rambut profesional dengan terapis berpengalaman.",
+        "cta": "Reservasi Jadwal Sekarang",
+        "about": "Manjakan diri Anda dengan rangkaian perawatan relaksasi dan kecantikan menyeluruh. Kami menghadirkan suasana yang tenang dan produk berkualitas untuk hasil terbaik Anda.",
+        "highlights": [
+            {"title": "Terapis Profesional", "desc": "Ditangani tenaga ahli bersertifikat dan berpengalaman.", "icon": "Award"},
+            {"title": "Produk Berkualitas", "desc": "Aman untuk kulit dan rambut, teruji secara klinis.", "icon": "ShieldCheck"},
+            {"title": "Reservasi Praktis", "desc": "Atur jadwal kedatangan tanpa perlu antre lama.", "icon": "Sparkles"}
+        ],
+        "headline": "Layanan Perawatan Favorit",
+        "subheadline": "Pilihan treatment terbaik untuk menyegarkan kembali tubuh dan penampilan Anda.",
+        "primary": "#DB2777", "accent": "#831843", "style": "elegant",
+        "cover": "https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Apakah harus booking terlebih dahulu?", "a": "Kami menyarankan booking via WhatsApp agar Anda mendapatkan slot waktu terbaik tanpa menunggu lama."}
+        ],
+        "testimonials": [
+            {"name": "Citra Kirana", "role": "Pelanggan", "comment": "Tempatnya bersih, wangi, dan pelayanannya sangat memuaskan. Keluar salon langsung fresh!", "rating": 5}
+        ]
+    },
+    "otomotif": {
+        "badge": "🔧 SERVICE CEPAT & TERPERCAYA",
+        "heroTitle": "Performa Kendaraan Optimal, Perjalanan Nyaman.",
+        "heroSubtitle": "Solusi perawatan, perbaikan mesin, dan sparepart original dengan mekanik handal.",
+        "cta": "Konsultasi & Booking Service",
+        "about": "Kendaraan Anda adalah partner mobilitas harian. Kami memberikan diagnosa akurat, pengerjaan teliti, dan transparansi biaya untuk memastikan keamanan berkendara Anda.",
+        "highlights": [
+            {"title": "Sparepart Original", "desc": "Jaminan suku cadang asli dan bergaransi resmi.", "icon": "ShieldCheck"},
+            {"title": "Mekanik Berpengalaman", "desc": "Pengerjaan teliti dengan peralatan modern.", "icon": "Award"},
+            {"title": "Garansi Hasil Service", "desc": "Garansi perbaikan untuk kepuasan dan ketenangan Anda.", "icon": "Sparkles"}
+        ],
+        "headline": "Paket Perawatan & Suku Cadang",
+        "subheadline": "Pilihan layanan servis berkala dan suku cadang terbaik untuk kendaraan Anda.",
+        "primary": "#0284C7", "accent": "#0369A1", "style": "professional",
+        "cover": "https://images.unsplash.com/photo-1486006920555-c77dce18193b?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Apakah ada estimasi biaya sebelum pengerjaan?", "a": "Ya! Kami selalu memberikan rincian estimasi biaya dan konfirmasi sebelum melakukan penggantian part."}
+        ],
+        "testimonials": [
+            {"name": "Bambang Sudiro", "role": "Pelanggan", "comment": "Mekaniknya jujur dan detail ngejelasin masalah mesin. Harganya juga transparan banget.", "rating": 5}
+        ]
+    },
+    "jasa": {
+        "badge": "💼 SOLUSI PROFESIONAL & TERUJI",
+        "heroTitle": "Wujudkan Kebutuhan Bisnis Anda Bersama Kami.",
+        "heroSubtitle": "Layanan profesional, tepat waktu, dan berorientasi pada hasil terbaik.",
+        "cta": "Konsultasi Gratis Sekarang",
+        "about": "Kami berkomitmen memberikan hasil kerja berkualitas tinggi yang menjawab tantangan Anda. Dengan komunikasi transparan dan dedikasi penuh, kami siap menjadi partner terpercaya Anda.",
+        "highlights": [
+            {"title": "Hasil Berkualitas Tinggi", "desc": "Dikerjakan dengan standar profesional dan teliti.", "icon": "Award"},
+            {"title": "Pengerjaan Tepat Waktu", "desc": "Komitmen deadline yang terjaga sesuai kesepakatan.", "icon": "Sparkles"},
+            {"title": "Konsultasi Responsif", "desc": "Diskusi mudah dan cepat via WhatsApp setiap saat.", "icon": "MessageCircle"}
+        ],
+        "headline": "Layanan Unggulan Kami",
+        "subheadline": "Pilihan solusi terpadu untuk kebutuhan pribadi maupun bisnis Anda.",
+        "primary": "#2563EB", "accent": "#1E3A8A", "style": "professional",
+        "cover": "https://images.unsplash.com/photo-1497215728101-856f4ea42174?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Bagaimana alur kerja layanannya?", "a": "Mulai dari konsultasi kebutuhan via WhatsApp, penawaran harga, proses pengerjaan, hingga serah terima hasil."}
+        ],
+        "testimonials": [
+            {"name": "Agus Salim", "role": "Klien", "comment": "Sangat komunikatif dan hasil kerjanya rapi serta tepat waktu. Sangat recommended!", "rating": 5}
+        ]
+    },
+    "kesehatan": {
+        "badge": "🩺 KESEHATAN KELUARGA PRIORITAS KAMI",
+        "heroTitle": "Pelayanan Medis Terpercaya, Ramah, dan Nyaman.",
+        "heroSubtitle": "Pemeriksaan kesehatan, konsultasi medis, dan obat-obatan lengkap untuk Anda.",
+        "cta": "Konsultasi & Buat Janji",
+        "about": "Kesehatan Anda dan keluarga adalah hal terpenting. Kami hadir memberikan pelayanan kesehatan dengan fasilitas bersih, tenaga medis ramah, dan penjelasan yang mudah dipahami.",
+        "highlights": [
+            {"title": "Tenaga Medis Kompeten", "desc": "Ditangani dokter dan tenaga medis berpengalaman.", "icon": "Award"},
+            {"title": "Obat & Alkes Lengkap", "desc": "Tersedia produk farmasi resmi dan berizin BPOM.", "icon": "ShieldCheck"},
+            {"title": "Konsultasi Mudah", "desc": "Tanya jadwal dan info layanan via WhatsApp cepat.", "icon": "MessageCircle"}
+        ],
+        "headline": "Layanan & Produk Kesehatan",
+        "subheadline": "Daftar paket pemeriksaan dan produk farmasi untuk perlindungan keluarga.",
+        "primary": "#0D9488", "accent": "#115E59", "style": "modern",
+        "cover": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?q=80&w=1200&auto=format&fit=crop",
+        "faq": [
+            {"q": "Apakah melayani resep dokter dari luar?", "a": "Ya, kami melayani penebusan resep dokter resmi dengan stok obat lengkap."}
+        ],
+        "testimonials": [
+            {"name": "Nurul Hidayah", "role": "Pasien", "comment": "Dokter dan perawatnya sangat ramah, penjelasannya detail dan ruangannya bersih banget.", "rating": 5}
+        ]
+    }
+}
+
+DEFAULT_KNOWLEDGE = {
+    "badge": "⭐ KUALITAS TERBAIK & TERPERCAYA",
+    "heroTitle": "Solusi dan Produk Terbaik untuk Kebutuhan Anda.",
+    "heroSubtitle": "Menghadirkan pelayanan prima, produk berkualitas, dan kemudahan pemesanan.",
+    "cta": "Pesan via WhatsApp",
+    "about": "Kami berdedikasi menghadirkan produk dan layanan terbaik dengan mengutamakan kepuasan pelanggan. Setiap pesanan diproses dengan teliti, cepat, dan penuh rasa tanggung jawab.",
+    "highlights": [
+        {"title": "Kualitas Terjamin", "desc": "Produk teruji dengan standar mutu terbaik untuk Anda.", "icon": "ShieldCheck"},
+        {"title": "Layanan Ramah & Cepat", "desc": "Respons sigap dan bersahabat melayani setiap pertanyaan.", "icon": "Sparkles"},
+        {"title": "Pemesanan Praktis", "desc": "Mudah terhubung langsung melalui kontak WhatsApp kami.", "icon": "MessageCircle"}
+    ],
+    "headline": "Produk & Layanan Unggulan",
+    "subheadline": "Pilihan produk berkualitas yang siap melengkapi kebutuhan harian Anda.",
+    "primary": "#16A34A", "accent": "#14532D", "style": "modern",
+    "cover": "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=1200&auto=format&fit=crop",
+    "faq": [
+        {"q": "Bagaimana cara memesan produk?", "a": "Pilih produk yang Anda inginkan pada katalog, lalu klik tombol 'Pesan via WhatsApp'. Tim kami akan segera merespons Anda."},
+        {"q": "Metode pembayaran apa saja yang tersedia?", "a": "Kami menerima transfer bank, e-wallet (QRIS), serta pembayaran langsung di tempat."}
+    ],
+    "testimonials": [
+        {"name": "Rina Wijaya", "role": "Pelanggan Setia", "comment": "Pelayanannya cepat dan produknya sangat memuaskan. Sangat direkomendasikan!", "rating": 5}
+    ]
+}
+
+def detect_category_knowledge(category_str, name_str):
+    text = f"{(category_str or '').lower()} {(name_str or '').lower()}"
+    if any(k in text for k in ["kopi", "coffee", "cafe", "kafe", "kedai"]): return CATEGORY_KNOWLEDGE["kopi"]
+    if any(k in text for k in ["makanan", "kuliner", "resto", "restoran", "warung", "catering", "dapur", "nasi", "ayam", "bebek", "soto", "bakso"]): return CATEGORY_KNOWLEDGE["makanan"]
+    if any(k in text for k in ["bakery", "roti", "kue", "pastry", "cake", "donat", "bolu"]): return CATEGORY_KNOWLEDGE["bakery"]
+    if any(k in text for k in ["fashion", "pakaian", "baju", "butik", "distro", "hijab", "gamis", "sepatu", "tas"]): return CATEGORY_KNOWLEDGE["fashion"]
+    if any(k in text for k in ["salon", "barber", "barbershop", "kecantikan", "spa", "skincare", "facial", "nail"]): return CATEGORY_KNOWLEDGE["salon"]
+    if any(k in text for k in ["otomotif", "bengkel", "motor", "mobil", "cuci", "ban", "oli"]): return CATEGORY_KNOWLEDGE["otomotif"]
+    if any(k in text for k in ["kesehatan", "klinik", "apotek", "dokter", "gigi", "dental", "medis"]): return CATEGORY_KNOWLEDGE["kesehatan"]
+    if any(k in text for k in ["jasa", "konsultan", "fotografi", "desain", "studio", "service", "laundry", "cleaning"]): return CATEGORY_KNOWLEDGE["jasa"]
+    return DEFAULT_KNOWLEDGE
+
 async def ai_json(site, products, command=""):
-    key = os.environ.get("EMERGENT_LLM_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
     prompt = f"""Buat konfigurasi website UMKM Indonesia. Kembalikan JSON valid saja.
 Jangan mengarang informasi bisnis yang tidak diberikan.
 Data bisnis: {json.dumps({'business': {k: site.get(k) for k in ('businessName', 'category', 'description', 'city', 'province', 'whatsapp', 'instagram')}, 'products': [{'name': p.get('name'), 'price': p.get('price'), 'description': p.get('description')} for p in products]}, ensure_ascii=False)}
 Instruksi tambahan dari pemilik: {command or 'tidak ada'}
 Struktur JSON yang wajib: {{
+  "heroBadge": string label singkat menarik (max 5 kata),
   "heroTitle": string singkat (max 8 kata),
-  "heroSubtitle": string 1 kalimat menarik,
+  "heroSubtitle": string 1-2 kalimat menarik,
   "heroCta": string call to action singkat,
-  "about": string paragraf tentang bisnis (2-3 kalimat),
-  "highlights": array 3 string keunggulan singkat,
+  "about": string paragraf tentang bisnis (2-4 kalimat),
+  "highlights": array 3 object [{{"title": string, "desc": string, "icon": string}}],
   "productHeadline": string judul bagian produk,
+  "productSubheadline": string pengantar katalog produk,
   "primaryColor": hex color yang cocok dengan karakter bisnis,
   "accentColor": hex color pelengkap,
-  "style": salah satu dari [modern, minimal, elegant, playful, professional, warm]
+  "style": salah satu dari [modern, minimal, elegant, playful, professional, warm],
+  "businessHours": string jam operasional (contoh: "Senin - Minggu: 08:00 - 22:00 WIB"),
+  "faq": array 2-3 object [{{"q": string pertanyaan, "a": string jawaban}}],
+  "testimonials": array 2 object [{{"name": string, "role": string, "comment": string, "rating": 5}}]
 }}"""
-    chat = LlmChat(api_key=key, session_id=uid(), system_message="You create Indonesian website content in valid JSON only. Never invent facts not present in the input.").with_model("gemini", "gemini-3-flash-preview")
-    chunks = []
-    async for event in chat.stream_message(UserMessage(text=prompt)):
-        if isinstance(event, TextDelta): chunks.append(event.content)
-        if isinstance(event, StreamDone): break
-    raw = "".join(chunks).strip().replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+
+    if HAS_EMERGENT and os.environ.get("EMERGENT_LLM_KEY"):
+        try:
+            chat = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=uid(), system_message="You create Indonesian website content in valid JSON only. Never invent facts not present in the input.").with_model("gemini", "gemini-3-flash-preview")
+            chunks = []
+            async for event in chat.stream_message(UserMessage(text=prompt)):
+                if isinstance(event, TextDelta): chunks.append(event.content)
+                if isinstance(event, StreamDone): break
+            raw = "".join(chunks).strip().replace("```json", "").replace("```", "").strip()
+            return json.loads(raw)
+        except Exception as e:
+            log.warning("Emergent LLM call failed: %s", e)
+
+    if gemini_key:
+        try:
+            from google import genai
+            client_ai = genai.Client(api_key=gemini_key)
+            response = client_ai.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+            raw = response.text.strip().replace("```json", "").replace("```", "").strip()
+            return json.loads(raw)
+        except Exception as e:
+            log.warning("Google GenAI call failed: %s", e)
+
+    # Smart Template Engine Fallback
+    b_name = site.get("businessName") or "Usaha Kami"
+    cat = site.get("category") or "Lainnya"
+    city = site.get("city") or "Indonesia"
+    desc = site.get("description")
+    
+    tpl = detect_category_knowledge(cat, b_name)
+    
+    pri = tpl["primary"]
+    acc = tpl["accent"]
+    sty = tpl["style"]
+    
+    if command:
+        cmd_l = command.lower()
+        if "elegan" in cmd_l: sty = "elegant"; pri = "#1E293B"; acc = "#0F172A"
+        elif "hijau" in cmd_l: pri = "#16A34A"; acc = "#14532D"
+        elif "biru" in cmd_l: pri = "#2563EB"; acc = "#1E3A8A"
+        elif "merah" in cmd_l: pri = "#DC2626"; acc = "#991B1B"
+        elif "modern" in cmd_l: sty = "modern"
+        elif "hangat" in cmd_l: sty = "warm"; pri = "#B45309"; acc = "#78350F"
+
+    return {
+        "heroBadge": tpl["badge"],
+        "heroTitle": tpl["heroTitle"].replace("Usaha Anda", b_name),
+        "heroSubtitle": tpl["heroSubtitle"],
+        "heroCta": tpl["cta"],
+        "about": desc if (desc and len(desc) > 30) else f"{b_name} berlokasi di {city}. {tpl['about']}",
+        "highlights": tpl["highlights"],
+        "productHeadline": tpl["headline"],
+        "productSubheadline": tpl["subheadline"],
+        "primaryColor": pri,
+        "accentColor": acc,
+        "style": sty,
+        "businessHours": "Senin - Minggu: 08:00 - 22:00 WIB",
+        "faq": tpl["faq"],
+        "testimonials": tpl["testimonials"]
+    }
 
 @api.post("/websites/{site_id}/generate")
 async def generate(site_id: str, user=Depends(current_user)):
@@ -840,29 +1221,68 @@ async def demo_seed(user=Depends(current_user)):
 
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email", unique=True)
-    existing_idx = await db.websites.index_information()
-    if "slug_1" in existing_idx:
-        await db.websites.drop_index("slug_1")
-    await db.websites.create_index("slug", unique=True, name="slug_unique_nonempty", partialFilterExpression={"slug": {"$gt": ""}})
-    await db.payments.create_index("userId")
-    await db.notifications.create_index("userId")
-    await db.coupons.create_index("code", unique=True)
+    global client
+    try:
+        await client.admin.command("ping")
+        log.info("Terhubung ke MongoDB server.")
+    except Exception as e:
+        log.warning("Tidak dapat terhubung ke MongoDB server (%s). Menggunakan database in-memory (MongoMock).", e)
+        if HAS_MONGOMOCK:
+            client = AsyncMongoMockClient()
+            db_proxy.set_db(client[db_name])
+
+    try:
+        await db.users.create_index("email", unique=True)
+        existing_idx = await db.websites.index_information()
+        if "slug_1" in existing_idx:
+            await db.websites.drop_index("slug_1")
+        await db.websites.create_index("slug", unique=True, name="slug_unique_nonempty", partialFilterExpression={"slug": {"$gt": ""}})
+        await db.payments.create_index("userId")
+        await db.notifications.create_index("userId")
+        await db.coupons.create_index("code", unique=True)
+    except Exception as exc:
+        log.warning("Index creation note: %s", exc)
+
     # Migrate old plans
-    await db.plans.delete_many({"slug": {"$in": ["premium-1", "premium-3"]}})
+    try:
+        await db.plans.delete_many({"slug": {"$in": ["premium-1", "premium-3"]}})
+    except Exception:
+        pass
+
     for plan in DEFAULT_PLANS:
         existing = await db.plans.find_one({"slug": plan["slug"]})
         if not existing:
             await db.plans.insert_one({**plan, "createdAt": now()})
+
     # Migrate old user planSlug values
-    await db.users.update_many({"planSlug": "premium-1"}, {"$set": {"planSlug": "basic"}})
-    await db.users.update_many({"planSlug": "premium-3", "additionalWebsiteQuota": {"$gt": 0}}, {"$set": {"planSlug": "platinum"}})
-    await db.users.update_many({"planSlug": "premium-3"}, {"$set": {"planSlug": "premium"}})
+    try:
+        await db.users.update_many({"planSlug": "premium-1"}, {"$set": {"planSlug": "basic"}})
+        await db.users.update_many({"planSlug": "premium-3", "additionalWebsiteQuota": {"$gt": 0}}, {"$set": {"planSlug": "platinum"}})
+        await db.users.update_many({"planSlug": "premium-3"}, {"$set": {"planSlug": "premium"}})
+    except Exception:
+        pass
+
     if not await db.settings.find_one({"id": "platform"}):
         await db.settings.insert_one({**DEFAULT_SETTINGS, "createdAt": now()})
-    if not await db.users.find_one({"email": os.environ["ADMIN_EMAIL"].lower()}):
-        await db.users.insert_one({"id": uid(), "name": "Admin UsahaKu", "email": os.environ["ADMIN_EMAIL"].lower(), "password_hash": hash_password(os.environ["ADMIN_PASSWORD"]), "role": "ADMIN", "accountStatus": "ACTIVE", "subscriptionStatus": "ACTIVE", "websiteQuota": 999, "createdAt": now()})
+
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@usahaku.id").lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    if not await db.users.find_one({"email": admin_email}):
+        await db.users.insert_one({
+            "id": uid(),
+            "name": "Admin UsahaKu",
+            "email": admin_email,
+            "password_hash": hash_password(admin_password),
+            "role": "ADMIN",
+            "accountStatus": "ACTIVE",
+            "subscriptionStatus": "ACTIVE",
+            "websiteQuota": 999,
+            "createdAt": now()
+        })
 
 @app.on_event("shutdown")
 async def shutdown():
-    client.close()
+    try:
+        client.close()
+    except Exception:
+        pass

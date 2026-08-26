@@ -4,6 +4,7 @@ import Landing from "./pages/Landing";
 import { AuthPage, ForgotPassword, ResetPassword } from "./pages/Auth";
 import { UserShell, AdminShell } from "./lib/shared";
 import { Dashboard, WebsiteList, CreateWebsite, WebsiteDetail, ManualEdit, Notifications } from "./pages/Dashboard";
+import { SectionManager } from "./pages/Sections";
 import { Subscription, PaymentFlow, PaymentDetail } from "./pages/Subscription";
 import { PublicRoute, OwnerAccess } from "./pages/PublicSite";
 import { AdminOverview, AdminUsers, AdminUserDetail, AdminPayments, AdminPaymentDetail, AdminPlans, AdminActivity, AdminSettings, AdminWebsites } from "./pages/Admin";
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/dashboard/websites/create" element={<UserShell><CreateWebsite /></UserShell>} />
         <Route path="/dashboard/websites/:id" element={<UserShell><WebsiteDetail /></UserShell>} />
         <Route path="/dashboard/websites/:id/edit" element={<UserShell><ManualEdit /></UserShell>} />
+        <Route path="/dashboard/websites/:id/sections" element={<UserShell><SectionManager /></UserShell>} />
         <Route path="/dashboard/subscription" element={<UserShell><Subscription /></UserShell>} />
         <Route path="/dashboard/subscription/pay" element={<UserShell><PaymentFlow /></UserShell>} />
         <Route path="/dashboard/subscription/payment/:pid" element={<UserShell><PaymentDetail /></UserShell>} />

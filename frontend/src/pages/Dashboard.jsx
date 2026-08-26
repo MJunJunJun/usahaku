@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2 } from "lucide-react";
+import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate } from "lucide-react";
 import { api, errorText, uploadFile, daysUntil, money, formatDate } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 import PublicWebsiteView from "./PublicWebsiteView";
+import { SectionForm, makeDefaultSections } from "./Sections";
 
 const Stat = ({ label, value, icon }) => (
   <div className="stat"><span>{icon}</span><div><b>{value}</b><small>{label}</small></div></div>
@@ -146,9 +147,11 @@ export function CreateWebsite() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ businessName: "", category: "Coffee Shop", description: "", logoUrl: "", coverImageUrl: "", whatsapp: "", phone: "", email: "", instagram: "", facebook: "", tiktok: "", address: "", city: "", province: "" });
   const [products, setProducts] = useState([{ name: "", description: "", price: "", images: [] }]);
+  const [sections, setSections] = useState(makeDefaultSections());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (key, val) => setForm({ ...form, [key]: val });
+  const setSectionCfg = (patch) => setSections({ ...sections, ...patch });
 
   const uploadLogo = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -179,11 +182,13 @@ export function CreateWebsite() {
       }
       try { await api.post(`/websites/${w.id}/generate`); }
       catch (aiErr) {
-        // AI failed but website exists — redirect and let user retry generation on detail page
+        // AI failed but website exists — apply section config, redirect, let user retry generation on detail page
+        try { await api.put(`/websites/${w.id}/sections`, sections); } catch (_) {}
         nav(`/dashboard/websites/${w.id}`);
         setTimeout(() => alert("Website berhasil dibuat, tapi AI belum berhasil membuat konten. Coba tekan 'Generate' di halaman website."), 300);
         return;
       }
+      try { await api.put(`/websites/${w.id}/sections`, sections); } catch (_) {}
       nav(`/dashboard/websites/${w.id}`);
     } catch (e) { setErr(errorText(e)); }
     finally { setBusy(false); }
@@ -197,12 +202,13 @@ export function CreateWebsite() {
           <h1>Buat website baru</h1>
           <p>Ceritakan sedikit tentang usahamu. Sisanya kami bantu.</p>
         </div>
-        <span className="wizard-count">Langkah {step} dari 3</span>
+        <span className="wizard-count">Langkah {step} dari 4</span>
       </div>
       <div className="wizard-steps">
         <span className={step >= 1 ? "active" : ""}><b>1</b> Usaha</span><i />
         <span className={step >= 2 ? "active" : ""}><b>2</b> Produk</span><i />
-        <span className={step >= 3 ? "active" : ""}><b>3</b> Siap dibuat</span>
+        <span className={step >= 3 ? "active" : ""}><b>3</b> Section</span><i />
+        <span className={step >= 4 ? "active" : ""}><b>4</b> Siap dibuat</span>
       </div>
       <div className="wizard-card">
         {step === 1 && (
@@ -275,16 +281,24 @@ export function CreateWebsite() {
         )}
         {step === 3 && (
           <>
+            <div className="eyebrow">ATUR SECTION HALAMAN</div>
+            <h2>Susun bagian halaman website-mu.</h2>
+            <p className="form-intro">Nyalakan/matikan tiap bagian, atau pakai preset template untuk mengisi konten secara instan. Semua bisa diubah lagi nanti.</p>
+            <SectionForm site={form} cfg={sections} set={setSectionCfg} />
+          </>
+        )}
+        {step === 4 && (
+          <>
             <div className="generate-panel">
               <div className="generate-icon"><Sparkles size={28} /></div>
               <div className="eyebrow">LANGKAH TERAKHIR</div>
               <h2>Siap dibuat dengan AI.</h2>
-              <p>UsahaKu akan menyusun website berdasarkan informasi <b>{form.businessName || "usahamu"}</b> dan {products.filter(x => x.name).length || 0} produk yang kamu tambahkan.</p>
+              <p>UsahaKu akan menyusun website berdasarkan informasi <b>{form.businessName || "usahamu"}</b>, {products.filter(x => x.name).length || 0} produk, dan pengaturan section kamu.</p>
               <div className="generate-list">
                 <span><Check size={16} /> Menganalisis karakter usaha</span>
                 <span><Check size={16} /> Menentukan gaya visual</span>
                 <span><Check size={16} /> Menyusun konten website</span>
-                <span><Check size={16} /> Menyiapkan katalog produk</span>
+                <span><Check size={16} /> Menerapkan section pilihanmu</span>
               </div>
             </div>
           </>
@@ -292,7 +306,7 @@ export function CreateWebsite() {
         <FormError msg={err} />
         <div className="wizard-actions">
           {step > 1 && <Button data-testid="wizard-previous-button" variant="outline" onClick={() => setStep(step - 1)}>Kembali</Button>}
-          {step < 3 ? (
+          {step < 4 ? (
             <Button data-testid="wizard-next-button" onClick={() => { if (step === 1 && !form.businessName) { setErr("Nama usaha wajib diisi"); return; } setErr(""); setStep(step + 1); }}>
               Lanjut <ArrowRight size={16} />
             </Button>
@@ -348,6 +362,7 @@ export function WebsiteDetail() {
           <p>{w.category} · <StatusBadge status={w.status} /></p>
         </div>
         <div className="head-actions">
+          <Button data-testid="sections-manager-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/sections`)}><LayoutTemplate size={16} /> Kelola section</Button>
           <Button data-testid="edit-manual-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/edit`)}>Edit manual</Button>
           <Button data-testid="publish-website-button" onClick={publish}>
             <ExternalLink size={16} /> {w.status === "PUBLISHED" ? "Perbarui online" : "Publish website"}
@@ -466,9 +481,12 @@ export function ManualEdit() {
         <div>
           <Link data-testid="edit-back" className="back-link" to={`/dashboard/websites/${id}`}>← Kembali</Link>
           <h1>Edit informasi</h1>
-          <p>Ubah data usaha, produk, dan warna tema.</p>
+          <p>Ubah data usaha, produk, warna tema, dan section website.</p>
         </div>
-        <Button data-testid="edit-save-button" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan perubahan"}</Button>
+        <div className="head-actions">
+          <Button data-testid="edit-sections-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/sections`)}><LayoutTemplate size={16} /> Kelola section</Button>
+          <Button data-testid="edit-save-button" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan perubahan"}</Button>
+        </div>
       </div>
       <div className="wizard-card">
         <div className="eyebrow">DATA USAHA</div>

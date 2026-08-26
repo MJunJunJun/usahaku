@@ -3,3 +3,4 @@
 @tailwind components;
 @tailwind utilities;
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:#111827;background:#fff;font-family:Inter,sans-serif;-webkit-font-smoothing:antialiased}button,input,textarea,select{font:inherit}button,a{transition:color .2s,background-color .2s,border-color .2s,transform .2s,box-shadow .2s}a{text-decoration:none;color:inherit}::selection{background:#bbf7d0;color:#14532d}
+:root{--background:0 0% 100%;--foreground:222 47% 11%;--card:0 0% 100%;--card-foreground:222 47% 11%;--popover:0 0% 100%;--popover-foreground:222 47% 11%;--primary:161 90% 31%;--primary-foreground:0 0% 100%;--secondary:210 40% 96%;--secondary-foreground:222 47% 11%;--muted:210 40% 96%;--muted-foreground:215 16% 47%;--accent:210 40% 94%;--accent-foreground:222 47% 11%;--destructive:0 84% 60%;--destructive-foreground:0 0% 98%;--border:214 32% 91%;--input:214 32% 91%;--ring:161 90% 31%;--radius:0.75rem}
