@@ -19,19 +19,19 @@ services:
       JWT_SECRET: change-this-secret
       ADMIN_EMAIL: admin@usahaku.id
       ADMIN_PASSWORD: admin123
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
 
   frontend:
     build:
       context: ./frontend
       args:
-        REACT_APP_BACKEND_URL: http://localhost:8000
+        REACT_APP_BACKEND_URL: ""
     restart: unless-stopped
     depends_on:
       - backend
     environment:
-      REACT_APP_BACKEND_URL: http://localhost:8000
+      REACT_APP_BACKEND_URL: ""
       HOST: 0.0.0.0
       CHOKIDAR_USEPOLLING: "true"
     ports:
