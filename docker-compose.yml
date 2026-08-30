@@ -19,8 +19,8 @@ services:
       JWT_SECRET: change-this-secret
       ADMIN_EMAIL: admin@usahaku.id
       ADMIN_PASSWORD: admin123
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
 
   frontend:
     build:
