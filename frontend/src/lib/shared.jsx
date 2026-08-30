@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, LogOut, Plus, Sparkles, Store, CreditCard, Settings, Bell, Users, ClipboardList, ScrollText, Cog, Ticket } from "lucide-react";
+import { LayoutDashboard, LogOut, Plus, Sparkles, Store, CreditCard, Settings, Bell, Users, ClipboardList, ScrollText, Cog, Ticket, MessageSquare, Radio, BookUser } from "lucide-react";
 import { api, daysUntil } from "./api";
 
 export const Brand = ({ light = false, mini = false }) => (
@@ -83,6 +83,9 @@ export const AdminSidebar = () => {
       <Link data-testid="admin-sidebar-payments" to="/admin/payment-requests"><ClipboardList size={17} />Pembayaran</Link>
       <Link data-testid="admin-sidebar-plans" to="/admin/plans"><CreditCard size={17} />Paket</Link>
       <Link data-testid="admin-sidebar-coupons" to="/admin/coupons"><Ticket size={17} />Kupon</Link>
+      <Link data-testid="admin-sidebar-wa-chat" to="/admin/wa-chat"><MessageSquare size={17} />Chat WA</Link>
+      <Link data-testid="admin-sidebar-wa-contacts" to="/admin/wa-contacts"><BookUser size={17} />Kontak WA</Link>
+      <Link data-testid="admin-sidebar-whatsapp" to="/admin/whatsapp"><Radio size={17} />WhatsApp</Link>
       <Link data-testid="admin-sidebar-logs" to="/admin/activity-logs"><ScrollText size={17} />Aktivitas</Link>
       <Link data-testid="admin-sidebar-settings" to="/admin/settings"><Cog size={17} />Pengaturan</Link>
       <div className="side-spacer" />

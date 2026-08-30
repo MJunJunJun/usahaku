@@ -52,6 +52,16 @@ export function Subscription() {
         <StatusBadge status={user.subscriptionStatus} />
       </div>
 
+      {(user.subscriptionStatus === "TRIAL_EXPIRED" || user.subscriptionStatus === "EXPIRED") && (
+        <div className="pending-payment-card expired-cta" data-testid="expired-cta-banner">
+          <Sparkles size={20} />
+          <div>
+            <b>Masa {user.subscriptionStatus === "TRIAL_EXPIRED" ? "trial gratis" : "langganan"} kamu sudah berakhir.</b>
+            <span>Website bisnismu sementara tidak tampil ke pengunjung. Pilih salah satu paket di bawah untuk mengaktifkan kembali — pembayaran bisa dilakukan langsung lewat halaman ini.</span>
+          </div>
+        </div>
+      )}
+
       {pending && (
         <div className="pending-payment-card">
           <Sparkles size={20} />
@@ -188,10 +198,10 @@ export function PaymentFlow() {
   };
 
   const submit = async () => {
-    if (!proofUrl) { setErr("Silakan upload bukti transfer terlebih dahulu."); return; }
+    if (finalAmount > 0 && !proofUrl) { setErr("Silakan upload bukti transfer terlebih dahulu."); return; }
     setBusy(true); setErr("");
     try {
-      const r = await api.post("/payments", { planSlug: plan.slug, additionalWebsiteCount: extra, transferDate, proofUrl, notes, couponCode: coupon ? coupon.code : "" });
+      const r = await api.post("/payments", { planSlug: plan.slug, additionalWebsiteCount: extra, transferDate, proofUrl: proofUrl || "", notes, couponCode: coupon ? coupon.code : "" });
       setPayment(r.data);
       setStep(3);
     } catch (e) { setErr(errorText(e)); }
@@ -199,7 +209,9 @@ export function PaymentFlow() {
   };
 
   const wa = () => {
-    const msg = `Halo Admin UsahaKu, saya sudah melakukan pembayaran paket ${plan.name} sebesar Rp${money(finalAmount)}. Email akun saya: ${user.email}. Saya akan mengirimkan bukti transfer.`;
+    const msg = finalAmount === 0
+      ? `Halo Admin UsahaKu, saya mengaktifkan paket ${plan.name} (gratis). Email akun saya: ${user.email}. Mohon aktivasi paket saya.`
+      : `Halo Admin UsahaKu, saya sudah melakukan pembayaran paket ${plan.name} sebesar Rp${money(finalAmount)}. Email akun saya: ${user.email}. Saya akan mengirimkan bukti transfer.`;
     const num = (settings.adminWhatsapp || "").replace(/\D/g, "");
     return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
   };
@@ -249,19 +261,36 @@ export function PaymentFlow() {
             <p>{settings.paymentInstructions}</p>
           </div>
           <div className="wizard-actions">
-            <Button data-testid="already-transferred-button" onClick={() => setStep(2)}>Saya sudah transfer <ArrowRight size={16} /></Button>
+            {finalAmount === 0 ? (
+              <>
+                <div className="free-plan-notice">Paket ini gratis — tidak ada yang perlu ditransfer.</div>
+                <Button data-testid="already-transferred-button" onClick={() => setStep(2)}>Lanjutkan tanpa pembayaran <ArrowRight size={16} /></Button>
+              </>
+            ) : (
+              <Button data-testid="already-transferred-button" onClick={() => setStep(2)}>Saya sudah transfer <ArrowRight size={16} /></Button>
+            )}
           </div>
         </div>
       )}
 
       {step === 2 && (
         <div className="wizard-card">
-          <div className="eyebrow">BUKTI TRANSFER</div>
-          <h2>Unggah bukti pembayaran</h2>
-          <p className="form-intro">Foto/screenshot atau PDF bukti transfer.</p>
+          {finalAmount === 0 ? (
+            <>
+              <div className="eyebrow">KONFIRMASI PAKET GRATIS</div>
+              <h2>Tidak ada yang perlu dibayar</h2>
+              <p className="form-intro">Total pesananmu Rp0. Kamu bisa langsung mengirim pengajuan — unggah bukti tidak diperlukan (opsional).</p>
+            </>
+          ) : (
+            <>
+              <div className="eyebrow">BUKTI TRANSFER</div>
+              <h2>Unggah bukti pembayaran</h2>
+              <p className="form-intro">Foto/screenshot atau PDF bukti transfer.</p>
+            </>
+          )}
           <div className="form-grid">
-            <label>Tanggal transfer<input data-testid="transfer-date-input" type="date" value={transferDate} onChange={e => setTransferDate(e.target.value)} /></label>
-            <label className="full upload-label">Bukti transfer
+            {finalAmount > 0 && <label>Tanggal transfer<input data-testid="transfer-date-input" type="date" value={transferDate} onChange={e => setTransferDate(e.target.value)} /></label>}
+            <label className="full upload-label">{finalAmount === 0 ? "Bukti pembayaran (opsional)" : "Bukti transfer"}
               <div className="upload-box upload-box-large">
                 {proofPreview ? <img src={proofPreview} alt="bukti" /> : proofUrl ? <span>File terupload ✓</span> : <><Upload size={20} /><span>Upload gambar / PDF (max 8MB)</span></>}
                 <input type="file" accept="image/*,application/pdf" onChange={uploadProof} data-testid="proof-input" />
@@ -272,7 +301,7 @@ export function PaymentFlow() {
           <FormError msg={err} />
           <div className="wizard-actions">
             <Button data-testid="payment-back-button" variant="outline" onClick={() => setStep(1)}>Kembali</Button>
-            <Button data-testid="submit-payment-button" onClick={submit} disabled={busy || !proofUrl}>{busy ? "Mengirim..." : "Kirim untuk verifikasi"}</Button>
+            <Button data-testid="submit-payment-button" onClick={submit} disabled={busy || (finalAmount > 0 && !proofUrl)}>{busy ? "Mengirim..." : finalAmount === 0 ? "Aktifkan paket gratis" : "Kirim untuk verifikasi"}</Button>
           </div>
         </div>
       )}
@@ -283,7 +312,10 @@ export function PaymentFlow() {
             <div className="success-icon"><Check size={30} /></div>
             <div className="eyebrow">PEMBAYARAN DIKIRIM</div>
             <h2>Terima kasih, {user.name.split(" ")[0]}.</h2>
-            <p>Pembayaran <b>{plan.name}</b> senilai <b>Rp{money(finalAmount)}</b> sedang menunggu verifikasi admin.{bonusDays > 0 && ` Kamu akan mendapat bonus ${bonusDays} hari saat pembayaran disetujui.`} Kami akan memberi kabar melalui notifikasi.</p>
+            <p>{finalAmount === 0
+              ? <>Pengajuan paket <b>{plan.name}</b> (gratis) sudah dikirim dan menunggu verifikasi admin.{bonusDays > 0 && ` Kamu akan mendapat bonus ${bonusDays} hari saat disetujui.`} Kami akan memberi kabar melalui notifikasi.</>
+              : <>Pembayaran <b>{plan.name}</b> senilai <b>Rp{money(finalAmount)}</b> sedang menunggu verifikasi admin.{bonusDays > 0 && ` Kamu akan mendapat bonus ${bonusDays} hari saat pembayaran disetujui.`} Kami akan memberi kabar melalui notifikasi.</>}
+            </p>
             <div className="wizard-actions">
               <a data-testid="whatsapp-admin-button" className="btn btn-primary" href={wa()} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Kirim bukti ke Admin via WhatsApp</a>
               <Link data-testid="back-to-subscription" className="btn btn-outline" to="/dashboard/subscription">Kembali ke paket</Link>

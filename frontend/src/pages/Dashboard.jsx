@@ -125,6 +125,9 @@ export function WebsiteList() {
   const [list, setList] = useState(null);
   useEffect(() => { api.get("/dashboard").then(r => setList(r.data)); }, []);
   if (!list) return <Loading text="Memuat website..." />;
+  const used = list.stats.total;
+  const quota = list.quota;
+  const full = used >= quota;
   return (
     <div className="dashboard">
       <div className="page-head">
@@ -133,8 +136,17 @@ export function WebsiteList() {
           <h1>Semua bisnismu di satu tempat.</h1>
           <p>Kelola website, produk, dan tampilan dari sini.</p>
         </div>
-        <Link data-testid="list-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />Buat website</Link>
+        {full
+          ? <Link data-testid="list-upgrade-button" className="btn btn-outline" to="/dashboard/subscription"><ArrowRight size={16} />Upgrade kuota ({used}/{quota})</Link>
+          : <Link data-testid="list-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />Buat website</Link>}
       </div>
+      {list.websites.length > 0 && (
+        <div className={`quota-pill${full ? " is-full" : ""}`} data-testid="list-quota-info">
+          <span>Kuota website terpakai</span>
+          <b>{used} / {quota}</b>
+          <i className="quota-track"><i className="quota-fill" style={{ width: `${Math.min(100, Math.round((used / Math.max(quota, 1)) * 100))}%` }} /></i>
+        </div>
+      )}
       {list.websites.length ? <div className="website-grid">{list.websites.map(w => <WebsiteCard key={w.id} w={w} />)}</div> : <EmptyState />}
     </div>
   );
@@ -150,6 +162,9 @@ export function CreateWebsite() {
   const [sections, setSections] = useState(makeDefaultSections());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [quotaInfo, setQuotaInfo] = useState(null);
+  useEffect(() => { api.get("/dashboard").then(r => setQuotaInfo({ used: r.data.stats.total, quota: r.data.quota })); }, []);
+  const quotaFull = quotaInfo && quotaInfo.used >= quotaInfo.quota;
   const set = (key, val) => setForm({ ...form, [key]: val });
   const setSectionCfg = (patch) => setSections({ ...sections, ...patch });
 
@@ -194,6 +209,23 @@ export function CreateWebsite() {
     finally { setBusy(false); }
   };
 
+  if (quotaFull) return (
+    <div className="wizard-page">
+      <div className="page-head compact">
+        <div>
+          <Link data-testid="wizard-back" className="back-link" to="/dashboard">← Kembali ke ringkasan</Link>
+          <h1>Buat website baru</h1>
+        </div>
+      </div>
+      <div className="wizard-card quota-block-card" data-testid="quota-full-block">
+        <div className="eyebrow">KUOTA PENUH</div>
+        <h2>Kuota websitemu sudah habis.</h2>
+        <p className="form-intro">Paket kamu mengizinkan {quotaInfo.quota} website dan semuanya sudah terpakai ({quotaInfo.used}/{quotaInfo.quota}). Upgrade paket untuk menambah kuota website.</p>
+        <Link data-testid="quota-upgrade-button" className="btn btn-primary" to="/dashboard/subscription">Lihat paket &amp; upgrade <ArrowRight size={15} /></Link>
+      </div>
+    </div>
+  );
+
   return (
     <div className="wizard-page">
       <div className="page-head compact">
@@ -204,6 +236,13 @@ export function CreateWebsite() {
         </div>
         <span className="wizard-count">Langkah {step} dari 4</span>
       </div>
+      {quotaInfo && (
+        <div className="quota-pill" data-testid="create-quota-info">
+          <span>Kuota website terpakai</span>
+          <b>{quotaInfo.used} / {quotaInfo.quota}</b>
+          <i className="quota-track"><i className="quota-fill" style={{ width: `${Math.min(100, Math.round((quotaInfo.used / Math.max(quotaInfo.quota, 1)) * 100))}%` }} /></i>
+        </div>
+      )}
       <div className="wizard-steps">
         <span className={step >= 1 ? "active" : ""}><b>1</b> Usaha</span><i />
         <span className={step >= 2 ? "active" : ""}><b>2</b> Produk</span><i />
