@@ -1765,6 +1765,24 @@ async def wa_conversations_list(filter: str = "all", q: str = "", limit: int = 5
                 result = [r for r in result if q_lower in (r.get("name","") + r.get("phone","")).lower()]
             if filter == "unread":
                 result = [r for r in result if r.get("unreadCount", 0) > 0]
+            try:
+                cfg = await db.settings.find_one({"id": "wa_config"}) or {}
+                global_auto = cfg.get("globalAuto", True)
+                chat_ids = [r["id"] for r in result if r.get("id")]
+                saved = {}
+                if chat_ids:
+                    rows = await db.wa_conversations.find(
+                        {"id": {"$in": chat_ids}}, {"_id": 0, "id": 1, "mode": 1}
+                    ).to_list(200)
+                    for row in rows:
+                        saved[row.get("id")] = row.get("mode")
+                for r in result:
+                    if r["id"] in saved:
+                        r["mode"] = saved[r["id"]]
+                    else:
+                        r["mode"] = "AUTO" if global_auto else "MANUAL"
+            except Exception as e:
+                log.warning("mode merge error: %s", e)
             return result
     except Exception as e:
         log.warning("wa_conversations_list error: %s", e)
@@ -1829,8 +1847,28 @@ async def wa_mark_read(cid: str, _=Depends(admin_user)):
 async def wa_set_mode(cid: str, data: WaModeInput, admin=Depends(admin_user)):
     if data.mode not in ("AUTO", "MANUAL"):
         raise HTTPException(400, "Mode harus AUTO atau MANUAL")
-    r = await db.wa_conversations.update_one({"id": cid}, {"$set": {"mode": data.mode}})
-    if r.matched_count == 0: raise HTTPException(404, "Percakapan tidak ditemukan")
+    # Ensure conversation exists in DB for mode tracking
+    conv = await db.wa_conversations.find_one({"id": cid})
+    if not conv:
+        # Try to find by phone from JID
+        phone = cid.split("@")[0] if "@" in cid else cid
+        conv = await db.wa_conversations.find_one({"phone": phone})
+        if not conv:
+            conv = {
+                "id": cid,
+                "phone": phone,
+                "name": phone,
+                "lastMessageAt": now(),
+                "unreadCount": 0,
+                "mode": data.mode,
+                "lastBotReplyAt": "",
+                "createdAt": now(),
+            }
+            await db.wa_conversations.insert_one(conv)
+        else:
+            await db.wa_conversations.update_one({"id": conv["id"]}, {"$set": {"mode": data.mode}})
+    else:
+        await db.wa_conversations.update_one({"id": cid}, {"$set": {"mode": data.mode}})
     await log_activity(admin["id"], f"wa_mode_{data.mode.lower()}", None, cid, "")
     return {"ok": True, "mode": data.mode}
 
