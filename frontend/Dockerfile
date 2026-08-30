@@ -1,9 +1,11 @@
+# syntax=docker/dockerfile:1.7
 FROM node:20-alpine
 
 WORKDIR /app
 
 COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+    yarn install --frozen-lockfile
 
 COPY . .
 
