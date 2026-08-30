@@ -19,10 +19,17 @@ function CategoryPicker({ allCats, value, onChange, multiple = true, placeholder
   const norm = (s) => String(s || "").trim().toLowerCase();
   const selected = multiple ? (value || []) : (value ? [value] : []);
 
-  const addCategory = (raw) => {
+  const addCategory = async (raw) => {
     const t = String(raw || "").trim();
     if (!t) return;
     const canonical = allCats.find(c => norm(c) === norm(t)) || t;
+    if (!(multiple ? (value || []).some(v => norm(v) === norm(canonical)) : (value ? norm(value) === norm(canonical) : false))) {
+      try {
+        await api.post("/admin/wa/categories", { name: canonical });
+      } catch (e) {
+        // ignore category creation error
+      }
+    }
     if (multiple) {
       if (!(value || []).some(v => norm(v) === norm(canonical))) onChange([...(value || []), canonical]);
     } else {

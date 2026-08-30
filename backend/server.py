@@ -1424,6 +1424,29 @@ async def wa_contacts_list(q: str = "", category: str = "", _=Depends(admin_user
     items = await db.wa_contacts.find(query, {"_id": 0}).sort("createdAt", -1).to_list(1000)
     return items
 
+
+@api.post("/admin/wa/categories")
+async def wa_create_category(data: dict, admin=Depends(admin_user)):
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Nama kategori kosong")
+    existing = await db.wa_contacts.find({"categories": name}).limit(1).to_list(1)
+    if existing:
+        return {"ok": True, "name": name, "created": False}
+    dummy = {
+        "id": uuid.uuid4().hex,
+        "phone": "000000000000",
+        "name": "__category_placeholder__",
+        "websiteName": "",
+        "categories": [name],
+        "source": "system",
+        "notes": "Kategori placeholder",
+        "lastContactAt": "",
+        "createdAt": now(),
+    }
+    await db.wa_contacts.insert_one(dummy)
+    return {"ok": True, "name": name, "created": True}
+
 @api.get("/admin/wa/contacts/categories")
 async def wa_contact_categories(_=Depends(admin_user)):
     cats = await db.wa_contacts.distinct("categories")
