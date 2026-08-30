@@ -1,0 +1,22 @@
+map[]
+time="2026-08-26T21:18:31Z" level=info msg="[DEVICE_MANAGER] discovered 1 device records in registry"
+time="2026-08-26T21:18:31Z" level=info msg="[DEVICE_MANAGER] replacing in-memory device 6285185041647:16@s.whatsapp.net with registry device 7359c125-90d3-4327-991e-0094b5d63cd3"
+time="2026-08-26T21:18:31Z" level=info msg="[DEVICE_MANAGER] discovered 1 device records in store"
+time="2026-08-26T21:18:31Z" level=info msg="presence pulse scheduler started; interval=24h0m0s duration=5m0s"
+
+    _______ __
+   / ____(_) /_  ___  _____
+  / /_  / / __ \/ _ \/ ___/
+ / __/ / / /_/ /  __/ /
+/_/   /_/_.___/\___/_/          v3.4.0
+--------------------------------------------------
+INFO Server started on: 	http://[::]:3001
+INFO Total handlers: 		127
+INFO Prefork: 			Disabled
+INFO PID: 			3212
+INFO Total process count: 	1
+
+time="2026-08-26T21:18:34Z" level=info msg="auto-connected device 7359c125-90d3-4327-991e-0094b5d63cd3"
+time="2026-08-26T21:18:36Z" level=warning msg="[REMOTE_LOGOUT] Received LoggedOut event for device 6285185041647:16@s.whatsapp.net - user logged out from phone"
+time="2026-08-26T21:18:36Z" level=info msg="message received: {DEVICE_LOGGED_OUT Device logged out (slot kept) map[device_id:6285185041647:16@s.whatsapp.net]}"
+time="2026-08-26T21:19:01Z" level=info msg="Received terminated — shutting down"

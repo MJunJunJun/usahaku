@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Search, Check, X, Users, CreditCard, Store, ClipboardList, Sparkles } from "lucide-react";
+import { ArrowRight, Search, Check, X, Users, CreditCard, Store, ClipboardList, Sparkles, Plus, Trash2 } from "lucide-react";
 import { api, errorText, money, formatDate, formatDateTime } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 
@@ -303,25 +303,84 @@ export function AdminPlans() {
   const [plans, setPlans] = useState(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: "", monthlyPrice: "", websiteLimit: "", featuresText: "", allowsAdditional: false });
   useEffect(() => { api.get("/admin/plans").then(r => setPlans(r.data)); }, []);
   if (!plans) return <Loading text="Memuat paket..." />;
   const update = (i, k, v) => setPlans(plans.map((p, j) => i === j ? { ...p, [k]: v } : p));
   const save = async (p) => {
-    setSaving(true); setMsg("");
+    setSaving(true); setErr(""); setMsg("");
     try {
       await api.put(`/admin/plans/${p.slug}`, { name: p.name, monthlyPrice: Number(p.monthlyPrice), websiteLimit: Number(p.websiteLimit), features: p.features, isActive: p.isActive });
       setMsg(`Paket ${p.name} tersimpan.`);
-    } catch (e) { setMsg(errorText(e)); }
+    } catch (e) { setErr(errorText(e)); }
     finally { setSaving(false); }
+  };
+  const create = async () => {
+    setSaving(true); setErr(""); setMsg("");
+    try {
+      await api.post("/admin/plans", {
+        name: form.name,
+        monthlyPrice: Number(form.monthlyPrice) || 0,
+        websiteLimit: Number(form.websiteLimit) || 1,
+        features: form.featuresText.split("\n").map(s => s.trim()).filter(Boolean),
+        allowsAdditional: form.allowsAdditional,
+        isActive: true
+      });
+      setMsg(`Paket ${form.name} berhasil dibuat.`);
+      setForm({ name: "", monthlyPrice: "", websiteLimit: "", featuresText: "", allowsAdditional: false });
+      setShowForm(false);
+      const r = await api.get("/admin/plans");
+      setPlans(r.data);
+    } catch (e) { setErr(errorText(e)); }
+    finally { setSaving(false); }
+  };
+  const remove = async (p) => {
+    if (!window.confirm(`Hapus permanen paket ${p.name}? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setErr(""); setMsg("");
+    try {
+      await api.delete(`/admin/plans/${p.slug}`);
+      setPlans(plans.filter(x => x.slug !== p.slug));
+      setMsg(`Paket ${p.name} dihapus.`);
+    } catch (e) { setErr(errorText(e)); }
   };
   return (
     <div className="dashboard">
-      <AdminHead eyebrow="PAKET" title="Manajemen paket" subtitle="Atur harga, kuota, dan fitur setiap paket." />
+      <AdminHead eyebrow="PAKET" title="Manajemen paket" subtitle="Atur harga, kuota, dan fitur. Buat paket baru atau hapus yang tidak dipakai."
+        extra={<Button data-testid="admin-new-plan-button" onClick={() => { setShowForm(!showForm); setErr(""); }}><Plus size={16} /> Paket baru</Button>} />
       {msg && <div className="form-info">{msg}</div>}
+      {showForm && (
+        <div className="wizard-card" data-testid="admin-plan-form">
+          <div className="eyebrow">PAKET BARU</div>
+          <div className="form-grid">
+            <label>Nama paket<input data-testid="plan-form-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Contoh: Business" /></label>
+            <label>Harga/bulan<input data-testid="plan-form-price" type="number" value={form.monthlyPrice} onChange={e => setForm({ ...form, monthlyPrice: e.target.value })} placeholder="Contoh: 150000" /></label>
+            <label>Kuota website<input data-testid="plan-form-limit" type="number" value={form.websiteLimit} onChange={e => setForm({ ...form, websiteLimit: e.target.value })} placeholder="Contoh: 5" /></label>
+            <label>Bisa tambah website berbayar?
+              <select data-testid="plan-form-additional" value={form.allowsAdditional ? "1" : "0"} onChange={e => setForm({ ...form, allowsAdditional: e.target.value === "1" })}>
+                <option value="0">Tidak</option>
+                <option value="1">Ya</option>
+              </select>
+            </label>
+            <label className="full">Fitur (satu per baris)<textarea data-testid="plan-form-features" value={form.featuresText} onChange={e => setForm({ ...form, featuresText: e.target.value })} placeholder={"5 website\nAI generation & editing\nDukungan prioritas"} /></label>
+          </div>
+          <FormError msg={err} />
+          <div className="wizard-actions">
+            <Button variant="outline" onClick={() => setShowForm(false)}>Batal</Button>
+            <Button data-testid="plan-form-submit" onClick={create} disabled={saving || !form.name.trim()}>{saving ? "Menyimpan..." : "Buat paket"}</Button>
+          </div>
+        </div>
+      )}
+      {!showForm && err && <FormError msg={err} />}
       <div className="admin-plans-grid">
         {plans.map((p, i) => (
           <div className="wizard-card" key={p.slug}>
-            <div className="eyebrow">{p.slug.toUpperCase()}</div>
+            <div className="plan-card-head">
+              <div className="eyebrow">{p.slug.toUpperCase()}</div>
+              <span className={`badge ${p.isActive ? "badge-success" : "badge-danger"}`}>{p.isActive ? "Aktif" : "Nonaktif"}</span>
+            </div>
+            <div className="plan-card-price">Rp{money(p.monthlyPrice)}<small>/bulan</small></div>
             <div className="form-grid">
               <label>Nama<input data-testid={`plan-name-${p.slug}`} value={p.name} onChange={e => update(i, "name", e.target.value)} /></label>
               <label>Harga/bulan<input data-testid={`plan-price-${p.slug}`} type="number" value={p.monthlyPrice} onChange={e => update(i, "monthlyPrice", e.target.value)} /></label>
@@ -333,7 +392,12 @@ export function AdminPlans() {
               </label>
               <label className="full">Fitur (pisahkan dengan enter)<textarea data-testid={`plan-features-${p.slug}`} value={(p.features || []).join("\n")} onChange={e => update(i, "features", e.target.value.split("\n").filter(Boolean))} /></label>
             </div>
-            <Button data-testid={`plan-save-${p.slug}`} onClick={() => save(p)} disabled={saving}>{saving ? "Menyimpan..." : "Simpan paket"}</Button>
+            <div className="wizard-actions">
+              <Button variant="outline" data-testid={`plan-delete-${p.slug}`} onClick={() => remove(p)} title={p.isDefault || p.slug === "trial" ? "Paket bawaan tidak bisa dihapus" : "Hapus paket"} disabled={p.isDefault || p.slug === "trial"}>
+                <Trash2 size={15} /> Hapus
+              </Button>
+              <Button data-testid={`plan-save-${p.slug}`} onClick={() => save(p)} disabled={saving}>{saving ? "Menyimpan..." : "Simpan perubahan"}</Button>
+            </div>
           </div>
         ))}
       </div>

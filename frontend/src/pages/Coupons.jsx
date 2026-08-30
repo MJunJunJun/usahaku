@@ -79,7 +79,7 @@ export function UserCoupons() {
 export function AdminCoupons() {
   const [list, setList] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ code: "", discountType: "percentage", discountValue: 10, maxUses: "", expiresAt: "", isActive: true, description: "" });
+  const [form, setForm] = useState({ code: "", discountType: "percentage", discountValue: "", maxUses: "", expiresAt: "", isActive: true, description: "" });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -90,10 +90,10 @@ export function AdminCoupons() {
   const create = async () => {
     setBusy(true); setErr("");
     try {
-      const payload = { ...form, discountValue: Number(form.discountValue), maxUses: form.maxUses ? Number(form.maxUses) : null, expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : "" };
+      const payload = { ...form, discountValue: Number(form.discountValue), maxUses: form.maxUses ? Number(form.maxUses) : null, expiresAt: form.expiresAt ? new Date(`${form.expiresAt}T23:59:59`).toISOString() : "" };
       await api.post("/admin/coupons", payload);
       setShowForm(false);
-      setForm({ code: "", discountType: "percentage", discountValue: 10, maxUses: "", expiresAt: "", isActive: true, description: "" });
+      setForm({ code: "", discountType: "percentage", discountValue: "", maxUses: "", expiresAt: "", isActive: true, description: "" });
       await load();
     } catch (e) { setErr(errorText(e)); }
     finally { setBusy(false); }
@@ -107,7 +107,7 @@ export function AdminCoupons() {
   };
 
   const remove = async (c) => {
-    if (!window.confirm(`Nonaktifkan kupon ${c.code}?`)) return;
+    if (!window.confirm(`Hapus permanen kupon ${c.code}? Tindakan ini tidak bisa dibatalkan.`)) return;
     try { await api.delete(`/admin/coupons/${c.code}`); await load(); }
     catch (e) { alert(errorText(e)); }
   };
@@ -137,7 +137,7 @@ export function AdminCoupons() {
                 <option value="days">Bonus hari langganan</option>
               </select>
             </label>
-            <label>Nilai<input data-testid="coupon-form-value" type="number" value={form.discountValue} onChange={e => setForm({ ...form, discountValue: e.target.value })} placeholder={form.discountType === "percentage" ? "10" : form.discountType === "fixed" ? "25000" : "7"} /></label>
+            <label>Nilai<input data-testid="coupon-form-value" type="number" value={form.discountValue} onChange={e => setForm({ ...form, discountValue: e.target.value })} placeholder={form.discountType === "percentage" ? "Contoh: 10 (potongan 10%)" : form.discountType === "fixed" ? "Contoh: 25000 (potongan Rp25.000)" : "Contoh: 7 (bonus 7 hari)"} /></label>
             <label>Batas penggunaan (opsional)<input data-testid="coupon-form-maxuses" type="number" value={form.maxUses} onChange={e => setForm({ ...form, maxUses: e.target.value })} placeholder="Kosongkan untuk tanpa batas" /></label>
             <label>Berlaku sampai (opsional)<input data-testid="coupon-form-expires" type="date" value={form.expiresAt} onChange={e => setForm({ ...form, expiresAt: e.target.value })} /></label>
             <label>Status
@@ -168,7 +168,7 @@ export function AdminCoupons() {
             <span><StatusBadge status={c.isActive ? "APPROVED" : "REJECTED"} /></span>
             <span className="coupon-actions">
               <button data-testid={`toggle-coupon-${c.code}`} className="icon-button" title={c.isActive ? "Nonaktifkan" : "Aktifkan"} onClick={() => toggle(c)}>{c.isActive ? <X size={15} /> : <Check size={15} />}</button>
-              <button data-testid={`delete-coupon-${c.code}`} className="icon-button danger" onClick={() => remove(c)}><Trash2 size={14} /></button>
+              <button data-testid={`delete-coupon-${c.code}`} className="icon-button danger" title="Hapus permanen" onClick={() => remove(c)}><Trash2 size={14} /></button>
             </span>
           </div>
         ))}

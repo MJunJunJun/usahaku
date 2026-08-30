@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { api, errorText } from "../lib/api";
@@ -23,6 +23,19 @@ export function AuthPage({ register = false }) {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // ===== CEK SESSION: kalau sudah login, arahkan langsung =====
+  useEffect(() => {
+    api.get("/auth/me", { withCredentials: true }).then(r => {
+      const role = (r.data && r.data.role) || "";
+      // Redirect berdasarkan role: admin → /dashboard, user → /admin (atau sesuai route-nya)
+      const target = role === "ADMIN" ? "/admin" : "/dashboard";
+      if (target) nav(target);
+    }).catch(() => {
+      // Belum/login, biarkan form tampil
+    });
+  }, [nav]);
+
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setErr("");
