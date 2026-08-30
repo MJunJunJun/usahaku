@@ -51,13 +51,13 @@ async def ensure_device() -> str:
     """Pastikan ada device terdaftar di GoWA v9; kembalikan device_id."""
     try:
         async with httpx.AsyncClient(timeout=WA_TIMEOUT) as c:
-            r = await c.get(f"{GOWA_BASE_URL}/devices", auth=_auth())
+            r = await c.get(f"{GOWA_BASE_URL}/devices", auth=_auth(), headers=_headers())
             data = r.json() if r.status_code == 200 else {}
             results = data.get("results") or []
             if results:
                 return results[0].get("id", "")
             # belum ada device -> buat
-            r2 = await c.post(f"{GOWA_BASE_URL}/devices", auth=_auth(),
+            r2 = await c.post(f"{GOWA_BASE_URL}/devices", auth=_auth(), headers=_headers(),
                               json={"name": GOWA_DEVICE_ID})
             d2 = r2.json() if r2.status_code < 300 else {}
             return (d2.get("results") or {}).get("id", "")
@@ -163,7 +163,8 @@ async def login_qr() -> dict:
                 qr_b64 = ""
                 if qr_link:
                     try:
-                        img = await c.get(qr_link, auth=_auth())
+                        qr_link_fixed = qr_link.replace("http://127.0.0.1:3001", GOWA_BASE_URL).replace("http://localhost:3001", GOWA_BASE_URL)
+                        img = await c.get(qr_link_fixed, auth=_auth())
                         if img.status_code == 200:
                             qr_b64 = base64.b64encode(img.content).decode()
                     except Exception as e:

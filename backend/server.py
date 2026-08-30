@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio
+import httpx
 import hmac as _hmac
 
 import wa_service
@@ -1565,6 +1566,42 @@ def _parse_gowa_message(payload: dict):
         "createdAt": created,
     }
 
+@api.get("/admin/wa/_gowa/chats")
+async def wa_gowa_chats_debug(_=Depends(admin_user)):
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return {"ok": False, "error": "no device"}
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chats",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params={"limit": 20, "offset": 0},
+            )
+            return {"status": r.status_code, "body": r.text[:3000]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@api.get("/admin/wa/_gowa/messages/{jid}")
+async def wa_gowa_messages_debug(jid: str, _=Depends(admin_user)):
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return {"ok": False, "error": "no device"}
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chat/{jid}/messages",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params={"limit": 20, "offset": 0},
+            )
+            return {"status": r.status_code, "body": r.text[:3000]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @api.post("/wa/webhook")
 async def wa_webhook(request: Request):
     """Webhook GoWA -> simpan pesan masuk + balas otomatis bila mode AUTO.
@@ -1689,22 +1726,99 @@ async def wa_set_config(data: WaConfigInput, admin=Depends(admin_user)):
     return {"ok": True, "globalAuto": data.globalAuto}
 
 @api.get("/admin/wa/conversations")
-async def wa_conversations_list(filter: str = "all", q: str = "", _=Depends(admin_user)):
-    query = {}
-    if filter == "unread":
-        query["unreadCount"] = {"$gt": 0}
-    elif filter in ("AUTO", "MANUAL"):
-        query["mode"] = filter
-    if q.strip():
-        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
-        query["$or"] = [{"name": rx}, {"phone": rx}]
-    items = await db.wa_conversations.find(query, {"_id": 0}).sort("lastMessageAt", -1).to_list(200)
-    return items
+async def wa_conversations_list(filter: str = "all", q: str = "", limit: int = 50, offset: int = 0, _=Depends(admin_user)):
+    """Fetch chats directly from GoWA API (no webhook needed)."""
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return []
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            params = {"limit": min(limit, 200), "offset": offset}
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chats",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params=params,
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            chats = (data.get("results") or {}).get("data") or []
+            result = []
+            for ch in chats:
+                jid = ch.get("jid", "")
+                name = ch.get("name") or jid.split("@")[0]
+                phone = jid.split("@")[0] if "@" in jid else jid
+                is_group = "@g.us" in jid
+                result.append({
+                    "id": jid,
+                    "jid": jid,
+                    "phone": phone,
+                    "name": name,
+                    "isGroup": is_group,
+                    "lastMessageAt": ch.get("last_message_time") or ch.get("updated_at") or "",
+                    "unreadCount": 0,
+                    "mode": "AUTO",
+                })
+            if q.strip():
+                q_lower = q.strip().lower()
+                result = [r for r in result if q_lower in (r.get("name","") + r.get("phone","")).lower()]
+            if filter == "unread":
+                result = [r for r in result if r.get("unreadCount", 0) > 0]
+            return result
+    except Exception as e:
+        log.warning("wa_conversations_list error: %s", e)
+        return []
 
 @api.get("/admin/wa/conversations/{cid}/messages")
 async def wa_messages_list(cid: str, limit: int = 100, _=Depends(admin_user)):
-    msgs = await db.wa_messages.find({"conversationId": cid}, {"_id": 0}).sort("createdAt", 1).to_list(limit)
-    return msgs
+    """Fetch messages directly from GoWA API (no webhook needed).
+    cid = JID of the chat (e.g. 6285xxxx@s.whatsapp.net)"
+    """
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return []
+        jid = cid
+        if "@" not in jid:
+            if "@g.us" in cid:
+                jid = cid
+            else:
+                jid = cid + "@s.whatsapp.net"
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chat/{jid}/messages",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params={"limit": min(limit, 200)},
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            msgs = (data.get("results") or {}).get("data") or []
+            result = []
+            for m in msgs:
+                from_me = m.get("is_from_me") or m.get("from_me") or m.get("fromMe") or False
+                text = m.get("content") or m.get("message") or m.get("body") or m.get("text") or ""
+                ts = m.get("timestamp") or m.get("created_at") or m.get("ts") or ""
+                sender = m.get("sender_display_name") or m.get("pushname") or m.get("push_name") or ""
+                mid = m.get("id") or m.get("message_id") or ""
+                result.append({
+                    "id": mid,
+                    "conversationId": cid,
+                    "body": text,
+                    "direction": "OUT" if from_me else "IN",
+                    "type": m.get("media_type") or m.get("type") or "text",
+                    "status": "sent" if from_me else "received",
+                    "isBot": False,
+                    "sender": sender,
+                    "createdAt": ts,
+                })
+            result.sort(key=lambda x: x.get("createdAt", ""))
+            return result
+    except Exception as e:
+        log.warning("wa_messages_list error: %s", e)
+        return []
 
 @api.post("/admin/wa/conversations/{cid}/read")
 async def wa_mark_read(cid: str, _=Depends(admin_user)):

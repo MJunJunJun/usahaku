@@ -89,3 +89,7 @@ credentials.json
 
 # User uploads (runtime data)
 backend/uploads/
+gowa-data/
+backend/server.py.bak
+patch_docker_compose.py
+nginx.conf
