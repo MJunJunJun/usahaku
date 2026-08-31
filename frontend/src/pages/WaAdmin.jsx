@@ -190,7 +190,7 @@ export function WaCenter() {
             <span className={`wa-dot ${st.connected ? "ok" : st.gowaReachable ? "wait" : "bad"}`} />
             <div>
               <b>{st.connected ? "Terhubung ke WhatsApp" : st.gowaReachable ? "Gateway jalan — belum scan QR" : "Gateway WhatsApp tidak terjangkau"}</b>
-              <span>{st.connected ? "Pesan masuk & notifikasi aktif." : st.gowaReachable ? "Klik Tampilkan QR lalu scan dari aplikasi WhatsApp." : "Jalankan: docker compose -f docker-compose.gowa.yml --env-file backend/.env up -d"}</span>
+              <span>{st.connected ? "Pesan masuk & notifikasi aktif." : st.gowaReachable ? "Klik Tampilkan QR lalu scan dari aplikasi WhatsApp." : "Jalankan: docker compose up -d"}</span>
             </div>
           </div>
           <div className="wa-status-actions">

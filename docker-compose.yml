@@ -21,8 +21,12 @@ services:
       JWT_SECRET: change-this-secret
       ADMIN_EMAIL: admin@usahaku.id
       ADMIN_PASSWORD: admin123
-    ports:
-      - "8000:8000"
+      GOWA_BASE_URL: http://gowa:3000
+      GOWA_USER: admin
+      GOWA_PASS: admin123
+      WHATSAPP_WEBHOOK_SECRET: usahaku_wa_secret_2026
+    expose:
+      - "8000"
 
   frontend:
     build:
@@ -38,6 +42,32 @@ services:
       CHOKIDAR_USEPOLLING: "true"
     ports:
       - "3000:3000"
+
+  gowa:
+    image: aldinokemal2104/go-whatsapp-web-multidevice:latest
+    container_name: usahaku-gowa
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+    volumes:
+      - ./gowa-data:/app/storages
+    command:
+      - "rest"
+      - "--basic-auth=admin:admin123"
+      - "--webhook=http://backend:8000/api/wa/webhook?secret=usahaku_wa_secret_2026"
+      - "--os=UsahaKu"
+      - "--account-validation=false"
+      - "--autoreply=false"
+      - "--webhook-secret=usahaku_wa_secret_2026"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   mongo_data:
