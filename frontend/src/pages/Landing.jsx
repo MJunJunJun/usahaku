@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, ChevronRight, Menu, X, Sparkles } from "lucide-react";
 import { Brand } from "../lib/shared";
+import "./Landing.css";
 
 function PublicNav() {
   const [open, setOpen] = useState(false);
@@ -152,11 +153,11 @@ export default function Landing() {
           </div>
           <div className="example-grid">
             <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" color="linear-gradient(135deg,#14532d,#166534)" />
-            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" color="linear-gradient(135deg,#c2410c,#f97316)" />
-            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" color="linear-gradient(135deg,#312e81,#4338ca)" />
-            <Example testid="example-barber" title="Barber Co" category="Barbershop" color="linear-gradient(135deg,#1f2937,#374151)" />
-            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" color="linear-gradient(135deg,#831843,#be185d)" />
-            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" color="linear-gradient(135deg,#78350f,#b45309)" />
+            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" color="linear-gradient(135deg,#166534,#15803d)" />
+            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" color="linear-gradient(135deg,#15803d,#16a34a)" />
+            <Example testid="example-barber" title="Barber Co" category="Barbershop" color="linear-gradient(135deg,#166534,#22c55e)" />
+            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" color="linear-gradient(135deg,#14532d,#22c55e)" />
+            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" color="linear-gradient(135deg,#166534,#4ade80)" />
           </div>
         </section>
 
