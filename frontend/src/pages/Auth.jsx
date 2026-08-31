@@ -20,7 +20,11 @@ function AuthSide() {
 
 export function AuthPage({ register = false }) {
   const nav = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", whatsapp: "" });
+const [waSent, setWaSent] = useState(false);
+const [waCode, setWaCode] = useState("");
+const [waVerified, setWaVerified] = useState(false);
+const [waBusy, setWaBusy] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -36,16 +40,53 @@ export function AuthPage({ register = false }) {
     });
   }, [nav]);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setBusy(true); setErr("");
-    try {
-      const r = await api.post(`/auth/${register ? "register" : "login"}`, form);
+  
+const sendWaCode = async () => {
+  setWaBusy(true); setErr("");
+  try {
+    await api.post("/auth/send-wa-code", { phone: form.whatsapp, name: form.name });
+    setWaSent(true);
+    setMsg("Kode verifikasi terkirim ke nomor WA Anda.");
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setWaBusy(false); }
+};
+
+const verifyWaCode = async () => {
+  setWaBusy(true); setErr("");
+  try {
+    const r = await api.post("/auth/verify-wa", { phone: form.whatsapp, code: waCode });
+    if (r.data && r.data.ok) { setWaVerified(true); setWaSent(false); setMsg("Nomor WA berhasil diverifikasi."); }
+    else setErr("Verifikasi gagal.");
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setWaBusy(false); }
+};
+
+const submit = async (e) => {
+  e.preventDefault();
+  setBusy(true); setErr("");
+  try {
+    if (register) {
+      if (!waVerified) { setErr("Nomor WA belum diverifikasi"); setBusy(false); return; }
+      const r = await api.post(`/auth/register`, form);
+      if (r.data && r.data.ok) {
+        setMsg(r.data.message || "Selamat, akun Anda sudah aktif. Silakan login ulang.");
+        setTimeout(() => nav("/login"), 1500);
+      } else if (r.data && r.data.role) {
+        localStorage.setItem("user", JSON.stringify(r.data));
+        nav(r.data.role === "ADMIN" ? "/admin" : "/dashboard");
+      } else {
+        setMsg("Pendaftaran selesai. Silakan login ulang.");
+        setTimeout(() => nav("/login"), 1500);
+      }
+    } else {
+      const r = await api.post(`/auth/login`, form);
       localStorage.setItem("user", JSON.stringify(r.data));
       nav(r.data.role === "ADMIN" ? "/admin" : "/dashboard");
-    } catch (ex) { setErr(errorText(ex)); }
-    finally { setBusy(false); }
-  };
+    }
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setBusy(false); }
+};
+
   return (
     <div className="auth-page">
       <AuthSide />
@@ -57,9 +98,26 @@ export function AuthPage({ register = false }) {
           <p>{register ? "Ayo mulai buat website usahamu." : "Kelola semua website usahamu dari satu tempat."}</p>
           <form onSubmit={submit}>
             {register && (
-              <label>Nama lengkap
-                <input data-testid="register-name-input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Contoh: Rina Pratama" />
-              </label>
+              <>
+                <label>Nama lengkap
+                  <input data-testid="register-name-input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Contoh: Rina Pratama" />
+                </label>
+                <label>WhatsApp
+                  <div className="wa-row">
+                    <input data-testid="register-whatsapp-input" required value={form.whatsapp || ""} onChange={e => setForm({ ...form, whatsapp: e.target.value })} placeholder="628123456789" />
+                    <button type="button" className="btn btn-outline" data-testid="send-wa-code-button" onClick={sendWaCode} disabled={waBusy || !form.whatsapp}>{waBusy ? "Mengirim..." : "Kirim kode"}</button>
+                  </div>
+                </label>
+                {waSent && !waVerified && (
+                  <label>Kode verifikasi
+                    <div className="wa-row">
+                      <input data-testid="verify-wa-code-input" value={waCode} onChange={e => setWaCode(e.target.value)} placeholder="6 digit" />
+                      <button type="button" className="btn btn-outline" data-testid="verify-wa-button" onClick={verifyWaCode} disabled={waBusy || waCode.length < 4}>{waBusy ? "Mengecek..." : "Verifikasi"}</button>
+                    </div>
+                  </label>
+                )}
+                {waVerified && <div className="form-info">Nomor WA terverifikasi ✓</div>}
+              </>
             )}
             <label>Email
               <input data-testid={`${register ? "register" : "login"}-email-input`} required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="nama@email.com" />
@@ -89,15 +147,53 @@ export function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-  const submit = async (e) => {
-    e.preventDefault();
-    setBusy(true); setMsg("");
-    try {
-      const r = await api.post("/auth/forgot-password", { email });
-      setMsg(r.data.message + " " + (r.data.hint || ""));
-    } catch (ex) { setMsg(errorText(ex)); }
-    finally { setBusy(false); }
-  };
+  
+const sendWaCode = async () => {
+  setWaBusy(true); setErr("");
+  try {
+    await api.post("/auth/send-wa-code", { phone: form.whatsapp, name: form.name });
+    setWaSent(true);
+    setMsg("Kode verifikasi terkirim ke nomor WA Anda.");
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setWaBusy(false); }
+};
+
+const verifyWaCode = async () => {
+  setWaBusy(true); setErr("");
+  try {
+    const r = await api.post("/auth/verify-wa", { phone: form.whatsapp, code: waCode });
+    if (r.data && r.data.ok) { setWaVerified(true); setWaSent(false); setMsg("Nomor WA berhasil diverifikasi."); }
+    else setErr("Verifikasi gagal.");
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setWaBusy(false); }
+};
+
+const submit = async (e) => {
+  e.preventDefault();
+  setBusy(true); setErr("");
+  try {
+    if (register) {
+      if (!waVerified) { setErr("Nomor WA belum diverifikasi"); setBusy(false); return; }
+      const r = await api.post(`/auth/register`, form);
+      if (r.data && r.data.ok) {
+        setMsg(r.data.message || "Selamat, akun Anda sudah aktif. Silakan login ulang.");
+        setTimeout(() => nav("/login"), 1500);
+      } else if (r.data && r.data.role) {
+        localStorage.setItem("user", JSON.stringify(r.data));
+        nav(r.data.role === "ADMIN" ? "/admin" : "/dashboard");
+      } else {
+        setMsg("Pendaftaran selesai. Silakan login ulang.");
+        setTimeout(() => nav("/login"), 1500);
+      }
+    } else {
+      const r = await api.post(`/auth/login`, form);
+      localStorage.setItem("user", JSON.stringify(r.data));
+      nav(r.data.role === "ADMIN" ? "/admin" : "/dashboard");
+    }
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setBusy(false); }
+};
+
   return (
     <div className="auth-page">
       <AuthSide />
@@ -128,17 +224,53 @@ export function ResetPassword() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const token = params.get("token") || "";
-  const submit = async (e) => {
-    e.preventDefault();
-    if (password !== confirm) { setMsg("Password tidak sama."); return; }
-    setBusy(true); setMsg("");
-    try {
-      await api.post("/auth/reset-password", { token, password });
-      setMsg("Password berhasil diperbarui. Mengalihkan...");
-      setTimeout(() => nav("/login"), 1500);
-    } catch (ex) { setMsg(errorText(ex)); }
-    finally { setBusy(false); }
-  };
+  
+const sendWaCode = async () => {
+  setWaBusy(true); setErr("");
+  try {
+    await api.post("/auth/send-wa-code", { phone: form.whatsapp, name: form.name });
+    setWaSent(true);
+    setMsg("Kode verifikasi terkirim ke nomor WA Anda.");
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setWaBusy(false); }
+};
+
+const verifyWaCode = async () => {
+  setWaBusy(true); setErr("");
+  try {
+    const r = await api.post("/auth/verify-wa", { phone: form.whatsapp, code: waCode });
+    if (r.data && r.data.ok) { setWaVerified(true); setWaSent(false); setMsg("Nomor WA berhasil diverifikasi."); }
+    else setErr("Verifikasi gagal.");
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setWaBusy(false); }
+};
+
+const submit = async (e) => {
+  e.preventDefault();
+  setBusy(true); setErr("");
+  try {
+    if (register) {
+      if (!waVerified) { setErr("Nomor WA belum diverifikasi"); setBusy(false); return; }
+      const r = await api.post(`/auth/register`, form);
+      if (r.data && r.data.ok) {
+        setMsg(r.data.message || "Selamat, akun Anda sudah aktif. Silakan login ulang.");
+        setTimeout(() => nav("/login"), 1500);
+      } else if (r.data && r.data.role) {
+        localStorage.setItem("user", JSON.stringify(r.data));
+        nav(r.data.role === "ADMIN" ? "/admin" : "/dashboard");
+      } else {
+        setMsg("Pendaftaran selesai. Silakan login ulang.");
+        setTimeout(() => nav("/login"), 1500);
+      }
+    } else {
+      const r = await api.post(`/auth/login`, form);
+      localStorage.setItem("user", JSON.stringify(r.data));
+      nav(r.data.role === "ADMIN" ? "/admin" : "/dashboard");
+    }
+  } catch (ex) { setErr(errorText(ex)); }
+  finally { setBusy(false); }
+};
+
   return (
     <div className="auth-page">
       <AuthSide />
