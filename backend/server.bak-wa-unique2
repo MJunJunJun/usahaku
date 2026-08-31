@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio
+import httpx
 import hmac as _hmac
 
 import wa_service
@@ -138,6 +139,7 @@ class AuthInput(BaseModel):
 
 class RegisterInput(AuthInput):
     name: str
+    whatsapp: str
 
 class WebsiteInput(BaseModel):
     businessName: str
@@ -338,20 +340,56 @@ async def register(data: RegisterInput, response: Response, request: Request):
     email = data.email.lower().strip()
     if await db.users.find_one({"email": email}): raise HTTPException(409, "Email sudah terdaftar")
     if len(data.password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
+    # Pastikan nomor WhatsApp sudah diverifikasi sebelum membuat akun
+    phone = wa_service.normalize_number(data.whatsapp)
+    if not phone:
+        raise HTTPException(400, "Nomor WA tidak valid")
+    rec = await db.wa_verifications.find_one({"phone": phone}, {"_id": 0})
+    if not rec or not rec.get("verified"):
+        raise HTTPException(400, "Nomor WA belum diverifikasi. Kirim kode ke /auth/send-wa-code lalu verifikasi di /auth/verify-wa.")
     start = datetime.now(timezone.utc)
     end = start + timedelta(days=TRIAL_DAYS)
-    user = {"id": uid(), "name": data.name.strip(), "email": email, "password_hash": hash_password(data.password), "role": "USER", "accountStatus": "ACTIVE", "subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": start.isoformat(), "trialEndDate": end.isoformat(), "planSlug": "trial", "websiteQuota": 1, "additionalWebsiteQuota": 0, "createdAt": now()}
-    try:
+    user = {"id": uid(), "name": data.name.strip(), "email": email, "password_hash": hash_password(data.password), "role": "USER", "accountStatus": "ACTIVE", "subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": start.isoformat(), "trialEndDate": end.isoformat(), "planSlug": "trial", "websiteQuota": 1, "additionalWebsiteQuota": 0, "createdAt": now(), "whatsapp": phone}
+    await db.users.insert_one(user)
+    # Simpan/tautkan kontak WA ke user
+    await upsert_wa_contact(phone, name=user["name"], user_id=user["id"], source="verification")
+    await notify(user["id"], "Selamat datang di UsahaKu", "Selamat, akun Anda sudah aktif. Silakan login ulang untuk melanjutkan.")
+    # Jangan set cookie otomatis — minta user login ulang sesuai permintaan
+    return {"ok": True, "message": "Selamat akun anda sudah aktif. Silakan login ulang."}
 
-        await db.users.insert_one(user)
+# ---- WA verification: send & verify codes ----
+class WaSendInput(BaseModel):
+    phone: str
+    name: Optional[str] = None
 
-    except DuplicateKeyError:
+class WaVerifyInput(BaseModel):
+    phone: str
+    code: str
+    name: Optional[str] = None
 
-        raise HTTPException(409, "Nomor WhatsApp sudah terdaftar pada akun lain")
+@api.post("/auth/send-wa-code")
+async def send_wa_code(data: WaSendInput):
+    phone = wa_service.normalize_number(data.phone)
+    if not phone:
+        raise HTTPException(400, "Nomor WA tidak valid")
+    code = f"{secrets.randbelow(1000000):06d}"
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    await db.wa_verifications.update_one({"phone": phone}, {"$set": {"phone": phone, "code": code, "expiresAt": expires, "verified": False, "name": (data.name or ""), "createdAt": now(), "updatedAt": now()}}, upsert=True)
+    msg = f"Kode verifikasi UsahaKu: {code}. Berlaku 10 menit."
+    await wa_service.send_text(db, phone, msg, event="wa_verify")
+    return {"ok": True, "message": "Kode verifikasi terkirim"}
 
-    await notify(user["id"], "Selamat datang di UsahaKu", "Trial gratis 30 hari kamu sudah aktif. Yuk buat website pertamamu!")
-    response.set_cookie("access_token", token(user["id"], days=AUTH_COOKIE_DAYS), httponly=True, samesite="lax", max_age=AUTH_COOKIE_DAYS*86400, secure=(request.url.scheme == "https"))
-    return public(user)
+@api.post("/auth/verify-wa")
+async def verify_wa(data: WaVerifyInput):
+    phone = wa_service.normalize_number(data.phone)
+    if not phone:
+        raise HTTPException(400, "Nomor WA tidak valid")
+    rec = await db.wa_verifications.find_one({"phone": phone}, {"_id": 0})
+    if not rec or rec.get("code") != data.code or rec.get("expiresAt", "") < now():
+        raise HTTPException(400, "Kode verifikasi tidak valid atau sudah kadaluarsa")
+    await db.wa_verifications.update_one({"phone": phone}, {"$set": {"verified": True, "verifiedAt": now(), "name": (data.name or rec.get("name", "")), "updatedAt": now()}})
+    await upsert_wa_contact(phone, name=(data.name or rec.get("name", "")), source="verification")
+    return {"ok": True, "message": "Nomor WhatsApp berhasil diverifikasi"}
 
 @api.post("/auth/login")
 async def login(data: AuthInput, response: Response, request: Request):
@@ -1073,6 +1111,52 @@ async def admin_user_action(uid_: str, data: UserAdminAction, admin=Depends(admi
     await log_activity(admin["id"], action, uid_, notes=data.reason or "")
     return {"ok": True}
 
+@api.delete("/admin/users/{uid_}")
+async def admin_delete_user(uid_: str, admin=Depends(admin_user)):
+    u = await db.users.find_one({"id": uid_}, {"_id": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    # Hapus data terkait (websites, payments, contacts)
+    # Hapus file-file upload terkait websites milik user
+    websites = await db.websites.find({"userId": uid_}).to_list(length=None)
+    import re, os, glob
+    upload_ids = set()
+    def collect(obj):
+        if isinstance(obj, dict):
+            for v in obj.values():
+                collect(v)
+        elif isinstance(obj, list):
+            for it in obj:
+                collect(it)
+        elif isinstance(obj, str):
+            for m in re.findall(r'/api/uploads/([0-9a-fA-F\-]{36})', obj):
+                upload_ids.add(m)
+            for m in re.findall(r'/uploads/([0-9a-fA-F\-]{36})', obj):
+                upload_ids.add(m)
+    for w in websites:
+        collect(w)
+    base_candidates = ['/root/usahaku/backend/uploads', '/var/www/usahaku/uploads']
+    for uid_file in upload_ids:
+        for base in base_candidates:
+            pattern = os.path.join(base, uid_file + '*')
+            for fp in glob.glob(pattern):
+                try:
+                    if os.path.islink(fp):
+                        os.unlink(fp)
+                    else:
+                        os.remove(fp)
+                except Exception:
+                    pass
+
+    await db.users.delete_one({"id": uid_})
+    await db.websites.delete_many({"userId": uid_})
+    await db.payments.delete_many({"userId": uid_})
+    try:
+        await db.wa_contacts.delete_many({"userId": uid_})
+    except Exception:
+        pass
+    await log_activity(admin["id"], "delete_user", uid_, notes="Dihapus oleh admin")
+    return {"ok": True, "message": "User dihapus"}
 @api.get("/admin/websites")
 async def admin_websites(_=Depends(admin_user)):
     sites = await db.websites.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
@@ -1430,6 +1514,29 @@ async def wa_contacts_list(q: str = "", category: str = "", _=Depends(admin_user
     items = await db.wa_contacts.find(query, {"_id": 0}).sort("createdAt", -1).to_list(1000)
     return items
 
+
+@api.post("/admin/wa/categories")
+async def wa_create_category(data: dict, admin=Depends(admin_user)):
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Nama kategori kosong")
+    existing = await db.wa_contacts.find({"categories": name}).limit(1).to_list(1)
+    if existing:
+        return {"ok": True, "name": name, "created": False}
+    dummy = {
+        "id": uuid.uuid4().hex,
+        "phone": "000000000000",
+        "name": "__category_placeholder__",
+        "websiteName": "",
+        "categories": [name],
+        "source": "system",
+        "notes": "Kategori placeholder",
+        "lastContactAt": "",
+        "createdAt": now(),
+    }
+    await db.wa_contacts.insert_one(dummy)
+    return {"ok": True, "name": name, "created": True}
+
 @api.get("/admin/wa/contacts/categories")
 async def wa_contact_categories(_=Depends(admin_user)):
     cats = await db.wa_contacts.distinct("categories")
@@ -1572,6 +1679,42 @@ def _parse_gowa_message(payload: dict):
         "createdAt": created,
     }
 
+@api.get("/admin/wa/_gowa/chats")
+async def wa_gowa_chats_debug(_=Depends(admin_user)):
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return {"ok": False, "error": "no device"}
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chats",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params={"limit": 20, "offset": 0},
+            )
+            return {"status": r.status_code, "body": r.text[:3000]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@api.get("/admin/wa/_gowa/messages/{jid}")
+async def wa_gowa_messages_debug(jid: str, _=Depends(admin_user)):
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return {"ok": False, "error": "no device"}
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chat/{jid}/messages",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params={"limit": 20, "offset": 0},
+            )
+            return {"status": r.status_code, "body": r.text[:3000]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @api.post("/wa/webhook")
 async def wa_webhook(request: Request):
     """Webhook GoWA -> simpan pesan masuk + balas otomatis bila mode AUTO.
@@ -1696,22 +1839,123 @@ async def wa_set_config(data: WaConfigInput, admin=Depends(admin_user)):
     return {"ok": True, "globalAuto": data.globalAuto}
 
 @api.get("/admin/wa/conversations")
-async def wa_conversations_list(filter: str = "all", q: str = "", _=Depends(admin_user)):
-    query = {}
-    if filter == "unread":
-        query["unreadCount"] = {"$gt": 0}
-    elif filter in ("AUTO", "MANUAL"):
-        query["mode"] = filter
-    if q.strip():
-        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
-        query["$or"] = [{"name": rx}, {"phone": rx}]
-    items = await db.wa_conversations.find(query, {"_id": 0}).sort("lastMessageAt", -1).to_list(200)
-    return items
+async def wa_conversations_list(filter: str = "all", q: str = "", limit: int = 50, offset: int = 0, _=Depends(admin_user)):
+    """Fetch chats directly from GoWA API (no webhook needed)."""
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return []
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            params = {"limit": min(limit, 200), "offset": offset}
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chats",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params=params,
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            chats = (data.get("results") or {}).get("data") or []
+            result = []
+            for ch in chats:
+                jid = ch.get("jid", "")
+                name = ch.get("name") or jid.split("@")[0]
+                phone = jid.split("@")[0] if "@" in jid else jid
+                is_group = "@g.us" in jid
+                result.append({
+                    "id": jid,
+                    "jid": jid,
+                    "phone": phone,
+                    "name": name,
+                    "isGroup": is_group,
+                    "lastMessageAt": ch.get("last_message_time") or ch.get("updated_at") or "",
+                    "unreadCount": 0,
+                    "mode": "AUTO",
+                })
+            if q.strip():
+                q_lower = q.strip().lower()
+                result = [r for r in result if q_lower in (r.get("name","") + r.get("phone","")).lower()]
+            # FIRST: merge mode from DB
+            try:
+                cfg = await db.settings.find_one({"id": "wa_config"}) or {}
+                global_auto = cfg.get("globalAuto", True)
+                chat_ids = [r["id"] for r in result if r.get("id")]
+                saved = {}
+                if chat_ids:
+                    rows = await db.wa_conversations.find(
+                        {"id": {"$in": chat_ids}}, {"_id": 0, "id": 1, "mode": 1}
+                    ).to_list(200)
+                    for row in rows:
+                        saved[row.get("id")] = row.get("mode")
+                for r in result:
+                    if r["id"] in saved:
+                        r["mode"] = saved[r["id"]]
+                    else:
+                        r["mode"] = "AUTO" if global_auto else "MANUAL"
+            except Exception as e:
+                log.warning("mode merge error: %s", e)
+            # THEN: apply filters
+            if filter == "unread":
+                result = [r for r in result if r.get("unreadCount", 0) > 0]
+            if filter == "AUTO":
+                result = [r for r in result if r.get("mode") == "AUTO"]
+            if filter == "MANUAL":
+                result = [r for r in result if r.get("mode") == "MANUAL"]
+            return result
+    except Exception as e:
+        log.warning("wa_conversations_list error: %s", e)
+        return []
 
 @api.get("/admin/wa/conversations/{cid}/messages")
 async def wa_messages_list(cid: str, limit: int = 100, _=Depends(admin_user)):
-    msgs = await db.wa_messages.find({"conversationId": cid}, {"_id": 0}).sort("createdAt", 1).to_list(limit)
-    return msgs
+    """Fetch messages directly from GoWA API (no webhook needed).
+    cid = JID of the chat (e.g. 6285xxxx@s.whatsapp.net)"
+    """
+    try:
+        device_id = await wa_service.ensure_device()
+        if not device_id:
+            return []
+        jid = cid
+        if "@" not in jid:
+            if "@g.us" in cid:
+                jid = cid
+            else:
+                jid = cid + "@s.whatsapp.net"
+        async with httpx.AsyncClient(timeout=wa_service.WA_TIMEOUT) as c:
+            r = await c.get(
+                f"{wa_service.GOWA_BASE_URL}/chat/{jid}/messages",
+                auth=wa_service._auth(),
+                headers=wa_service._headers(),
+                params={"limit": min(limit, 200)},
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            msgs = (data.get("results") or {}).get("data") or []
+            result = []
+            for m in msgs:
+                from_me = m.get("is_from_me") or m.get("from_me") or m.get("fromMe") or False
+                text = m.get("content") or m.get("message") or m.get("body") or m.get("text") or ""
+                ts = m.get("timestamp") or m.get("created_at") or m.get("ts") or ""
+                sender = m.get("sender_display_name") or m.get("pushname") or m.get("push_name") or ""
+                mid = m.get("id") or m.get("message_id") or ""
+                result.append({
+                    "id": mid,
+                    "conversationId": cid,
+                    "body": text,
+                    "direction": "OUT" if from_me else "IN",
+                    "type": m.get("media_type") or m.get("type") or "text",
+                    "status": "sent" if from_me else "received",
+                    "isBot": False,
+                    "sender": sender,
+                    "createdAt": ts,
+                })
+            result.sort(key=lambda x: x.get("createdAt", ""))
+            return result
+    except Exception as e:
+        log.warning("wa_messages_list error: %s", e)
+        return []
 
 @api.post("/admin/wa/conversations/{cid}/read")
 async def wa_mark_read(cid: str, _=Depends(admin_user)):
@@ -1722,8 +1966,28 @@ async def wa_mark_read(cid: str, _=Depends(admin_user)):
 async def wa_set_mode(cid: str, data: WaModeInput, admin=Depends(admin_user)):
     if data.mode not in ("AUTO", "MANUAL"):
         raise HTTPException(400, "Mode harus AUTO atau MANUAL")
-    r = await db.wa_conversations.update_one({"id": cid}, {"$set": {"mode": data.mode}})
-    if r.matched_count == 0: raise HTTPException(404, "Percakapan tidak ditemukan")
+    # Ensure conversation exists in DB for mode tracking
+    conv = await db.wa_conversations.find_one({"id": cid})
+    if not conv:
+        # Try to find by phone from JID
+        phone = cid.split("@")[0] if "@" in cid else cid
+        conv = await db.wa_conversations.find_one({"phone": phone})
+        if not conv:
+            conv = {
+                "id": cid,
+                "phone": phone,
+                "name": phone,
+                "lastMessageAt": now(),
+                "unreadCount": 0,
+                "mode": data.mode,
+                "lastBotReplyAt": "",
+                "createdAt": now(),
+            }
+            await db.wa_conversations.insert_one(conv)
+        else:
+            await db.wa_conversations.update_one({"id": conv["id"]}, {"$set": {"mode": data.mode}})
+    else:
+        await db.wa_conversations.update_one({"id": cid}, {"$set": {"mode": data.mode}})
     await log_activity(admin["id"], f"wa_mode_{data.mode.lower()}", None, cid, "")
     return {"ok": True, "mode": data.mode}
 
@@ -1872,21 +2136,28 @@ async def shutdown():
         client.close()
     except Exception:
         pass
-# helper payload to insert into server.py
 
-check_wa_handler = '''
-@api.post("/auth/check-wa")
-async def check_wa(payload: dict):
-    """Check whether a WhatsApp number is already registered. Returns 409 if taken."""
-    phone_raw = payload.get("phone") if isinstance(payload, dict) else getattr(payload, "phone", "")
-    phone = wa_service.normalize_number(phone_raw)
+# Compatibility endpoints: expose WA verify/send on app directly (some clients call /api/auth/*)
+@app.post('/api/auth/send-wa-code')
+async def send_wa_code_api(data: WaSendInput):
+    phone = wa_service.normalize_number(data.phone)
     if not phone:
-        raise HTTPException(400, "Nomor WhatsApp tidak valid")
-    # Scan users collection and compare normalized numbers to avoid format mismatch
-    async for u in db.users.find({}, {"whatsapp": 1}):
-        if wa_service.normalize_number(u.get("whatsapp", "")) == phone:
-            raise HTTPException(409, "Nomor WhatsApp sudah terdaftar")
-    return {"ok": True}
-'''
+        raise HTTPException(400, 'Nomor WA tidak valid')
+    code = f"{secrets.randbelow(1000000):06d}"
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    await db.wa_verifications.update_one({"phone": phone}, {"$set": {"phone": phone, "code": code, "expiresAt": expires, "verified": False, "name": (data.name or ""), "createdAt": now(), "updatedAt": now()}}, upsert=True)
+    msg = f"Kode verifikasi UsahaKu: {code}. Berlaku 10 menit."
+    await wa_service.send_text(db, phone, msg, event='wa_verify')
+    return {"ok": True, "message": "Kode verifikasi terkirim"}
 
-print('ok')
+@app.post('/api/auth/verify-wa')
+async def verify_wa_api(data: WaVerifyInput):
+    phone = wa_service.normalize_number(data.phone)
+    if not phone:
+        raise HTTPException(400, 'Nomor WA tidak valid')
+    rec = await db.wa_verifications.find_one({"phone": phone}, {"_id": 0})
+    if not rec or rec.get('code') != data.code or rec.get('expiresAt', '') < now():
+        raise HTTPException(400, 'Kode verifikasi tidak valid atau sudah kadaluarsa')
+    await db.wa_verifications.update_one({"phone": phone}, {"$set": {"verified": True, "verifiedAt": now(), "name": (data.name or rec.get('name', '')), "updatedAt": now()}})
+    await upsert_wa_contact(phone, name=(data.name or rec.get('name', '')), source='verification')
+    return {"ok": True, "message": "Nomor WhatsApp berhasil diverifikasi"}

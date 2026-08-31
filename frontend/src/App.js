@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "@/App.css";
 import Landing from "./pages/Landing";
+import VerifyWA from "./pages/VerifyWA";
 import { AuthPage, ForgotPassword, ResetPassword } from "./pages/Auth";
 import { UserShell, AdminShell } from "./lib/shared";
 import { Dashboard, WebsiteList, CreateWebsite, WebsiteDetail, ManualEdit, Notifications } from "./pages/Dashboard";
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/register" element={<AuthPage register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-wa" element={<VerifyWA />} />
         <Route path="/site/:slug" element={<PublicRoute />} />
         <Route path="/owner-access/:slug" element={<OwnerAccess />} />
 
