@@ -20,6 +20,7 @@
 
 .auth-side .brand {
   width: fit-content;
+  margin-bottom: 2px;
 }
 
 .auth-side .light-eyebrow {
@@ -83,9 +84,15 @@
   color: var(--dark);
 }
 
+.back-link:focus-visible {
+  outline: none;
+  color: var(--dark);
+  text-decoration: underline;
+}
+
 .auth-form {
   width: 100%;
-  max-width: 420px;
+  max-width: 408px;
   background: #ffffff;
   border: 1px solid #e5ece5;
   border-radius: 16px;
@@ -103,7 +110,7 @@
   color: var(--dark);
   font-size: clamp(28px, 3.1vw, 36px);
   line-height: 1.1;
-  letter-spacing: -1.1px;
+  letter-spacing: -1.4px;
 }
 
 .auth-form > p {
@@ -200,11 +207,16 @@
 }
 
 .auth-form .btn-primary {
-  background: var(--dark);
+  background: var(--green);
 }
 
 .auth-form .btn-primary:hover {
-  background: #166534;
+  background: #15803d;
+}
+
+.auth-form .btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.2);
 }
 
 .form-error,
@@ -255,7 +267,7 @@
 
   .auth-side {
     padding: 28px 24px;
-    min-height: 280px;
+    min-height: 250px;
     justify-content: flex-start;
     gap: 22px;
   }
@@ -270,7 +282,7 @@
   }
 
   .auth-form {
-    max-width: 520px;
+    max-width: 500px;
     margin: 0 auto;
   }
 }
