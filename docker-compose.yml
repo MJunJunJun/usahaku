@@ -25,8 +25,10 @@ services:
       GOWA_USER: admin
       GOWA_PASS: admin123
       WHATSAPP_WEBHOOK_SECRET: usahaku_wa_secret_2026
-    expose:
-      - "8000"
+    ports:
+      - 8000:8000
+    volumes:
+      - ./backend/uploads:/app/uploads
 
   frontend:
     build:
