@@ -97,7 +97,7 @@ if %errorlevel%==0 (
     goto gowa_done
 )
 echo [..] Menjalankan GoWA via Docker Compose...
-docker compose -f docker-compose.gowa.yml --env-file backend\.env up -d
+docker compose --env-file backend\.env up -d gowa
 timeout /t 4 /nobreak >nul
 docker ps --format "{{.Names}}" | findstr /x "usahaku-gowa" >nul 2>&1
 if %errorlevel%==0 (

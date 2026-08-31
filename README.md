@@ -16,8 +16,9 @@ Setelah berjalan:
 - MongoDB: mongodb://localhost:27017
 
 Catatan:
-- Backend tidak dibuka langsung ke host.
-- Request API dari browser tetap lewat `http://localhost:3000/api/*` dan otomatis diproxy ke service backend internal.
+- Request API dari browser tetap lewat `http://localhost:3000/api/*` dan otomatis diproxy ke service backend.
+- Service backend dan GoWA berjalan di jaringan internal Docker (tidak dibuka ke host).
+- Alur WhatsApp: frontend -> backend (`/api/admin/wa/*`) -> GoWA (`http://gowa:3000`) internal antar-container.
 
 ### Akun admin default
 - Email: `admin@usahaku.id`
