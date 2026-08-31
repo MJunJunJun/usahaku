@@ -80,7 +80,10 @@ export function AdminUsers() {
             <span>{u.email}</span>
             <span>{u.planSlug || "trial"}</span>
             <span>{u.websiteCount} / {u.websiteQuota || 1}</span>
-            <span><StatusBadge status={u.subscriptionStatus} /></span>
+            <span><div className=status-actions>
+        <StatusBadge status={u.subscriptionStatus} />
+        <button className=btn btn-danger onClick={del} disabled={busy}>Hapus user</button>
+      </div></span>
             <span>{formatDate(u.subscriptionStatus === "TRIAL_ACTIVE" ? u.trialEndDate : u.subscriptionExpiryDate)}</span>
             <Link data-testid={`user-detail-${u.id}`} className="text-link" to={`/admin/users/${u.id}`}>Detail →</Link>
           </div>
@@ -109,6 +112,16 @@ export function AdminUserDetail() {
       if (r.data.resetLink) setMsg(`Reset link: ${window.location.origin}${r.data.resetLink}`);
       else setMsg("Aksi berhasil.");
       await load();
+    } catch (e) { setErr(errorText(e)); }
+    finally { setBusy(false); }
+  };
+
+  const del = async () => {
+    if (!confirm("Yakin hapus user ini?")) return;
+    setBusy(true); setErr("");
+    try {
+      await api.delete('/admin/users/' + id);
+      nav('/admin/users');
     } catch (e) { setErr(errorText(e)); }
     finally { setBusy(false); }
   };
