@@ -13,11 +13,12 @@ docker compose up --build
 
 Setelah berjalan:
 - Frontend: http://localhost:3000
+- Backend: http://localhost:8000
+- GoWA: http://localhost:3001
 - MongoDB: mongodb://localhost:27017
 
 Catatan:
-- Backend tidak dibuka langsung ke host.
-- Request API dari browser tetap lewat `http://localhost:3000/api/*` dan otomatis diproxy ke service backend internal.
+- Request API dari browser tetap lewat `http://localhost:3000/api/*` dan otomatis diproxy ke service backend.
 
 ### Akun admin default
 - Email: `admin@usahaku.id`
