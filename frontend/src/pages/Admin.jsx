@@ -51,6 +51,18 @@ export function AdminUsers() {
   const [filter, setFilter] = useState("ALL");
   useEffect(() => { api.get("/admin/users").then(r => setList(r.data)); }, []);
   if (!list) return <Loading text="Memuat pengguna..." />;
+  const [err, setErr] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const deleteUser = async (uid) => {
+    if (!confirm("Yakin hapus user ini?")) return;
+    setBusyId(uid); setErr("");
+    try {
+      await api.delete('/admin/users/' + uid);
+      setList(list.filter(x => x.id !== uid));
+    } catch (e) { setErr(errorText(e)); }
+    finally { setBusyId(null); }
+  };
+
   const filtered = list.filter(u => {
     if (filter === "TRIAL" && u.subscriptionStatus !== "TRIAL_ACTIVE") return false;
     if (filter === "ACTIVE" && u.subscriptionStatus !== "ACTIVE") return false;
@@ -80,10 +92,14 @@ export function AdminUsers() {
             <span>{u.email}</span>
             <span>{u.planSlug || "trial"}</span>
             <span>{u.websiteCount} / {u.websiteQuota || 1}</span>
-            <span><div className=status-actions>
-        <StatusBadge status={u.subscriptionStatus} />
-        <button className=btn btn-danger onClick={del} disabled={busy}>Hapus user</button>
-      </div></span>
+            <span>
+              <div>
+                <StatusBadge status={u.subscriptionStatus} />
+                <button className="btn btn-danger" data-testid={'delete-user-' + u.id} onClick={() => deleteUser(u.id)} disabled={busyId === u.id}>
+                  {busyId === u.id ? 'Menghapus...' : 'Hapus user'}
+                </button>
+              </div>
+            </span>
             <span>{formatDate(u.subscriptionStatus === "TRIAL_ACTIVE" ? u.trialEndDate : u.subscriptionExpiryDate)}</span>
             <Link data-testid={`user-detail-${u.id}`} className="text-link" to={`/admin/users/${u.id}`}>Detail →</Link>
           </div>
@@ -112,16 +128,6 @@ export function AdminUserDetail() {
       if (r.data.resetLink) setMsg(`Reset link: ${window.location.origin}${r.data.resetLink}`);
       else setMsg("Aksi berhasil.");
       await load();
-    } catch (e) { setErr(errorText(e)); }
-    finally { setBusy(false); }
-  };
-
-  const del = async () => {
-    if (!confirm("Yakin hapus user ini?")) return;
-    setBusy(true); setErr("");
-    try {
-      await api.delete('/admin/users/' + id);
-      nav('/admin/users');
     } catch (e) { setErr(errorText(e)); }
     finally { setBusy(false); }
   };

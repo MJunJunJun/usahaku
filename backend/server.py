@@ -1111,21 +1111,21 @@ async def admin_user_action(uid_: str, data: UserAdminAction, admin=Depends(admi
     await log_activity(admin["id"], action, uid_, notes=data.reason or "")
     return {"ok": True}
 
-@api.delete(/admin/users/{uid_})
+@api.delete("/admin/users/{uid_}")
 async def admin_delete_user(uid_: str, admin=Depends(admin_user)):
-    u = await db.users.find_one({id: uid_}, {_id: 0})
+    u = await db.users.find_one({"id": uid_}, {"_id": 0})
     if not u:
-        raise HTTPException(404, User tidak ditemukan)
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
     # Hapus data terkait (websites, payments, contacts)
-    await db.users.delete_one({id: uid_})
-    await db.websites.delete_many({userId: uid_})
-    await db.payments.delete_many({userId: uid_})
+    await db.users.delete_one({"id": uid_})
+    await db.websites.delete_many({"userId": uid_})
+    await db.payments.delete_many({"userId": uid_})
     try:
-        await db.wa_contacts.delete_many({userId: uid_})
+        await db.wa_contacts.delete_many({"userId": uid_})
     except Exception:
         pass
-    await log_activity(admin[id], delete_user, uid_, notes=Dihapus oleh admin)
-    return {ok: True, message: User dihapus}
+    await log_activity(admin["id"], "delete_user", uid_, notes="Dihapus oleh admin")
+    return {"ok": True, "message": "User dihapus"}
 @api.get("/admin/websites")
 async def admin_websites(_=Depends(admin_user)):
     sites = await db.websites.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
