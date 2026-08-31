@@ -23,8 +23,8 @@ services:
       GOWA_USER: admin
       GOWA_PASS: admin123
       WHATSAPP_WEBHOOK_SECRET: usahaku_wa_secret_2026
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
 
   frontend:
     build:
@@ -47,8 +47,8 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "3001:3000"
+    expose:
+      - "3000"
     volumes:
       - ./gowa-data:/app/storages
     command:
