@@ -1677,6 +1677,7 @@
 }
 .wa-chip.auto { background: #eff6ff; color: #1d4ed8; }
 .wa-chip.manual { background: #fef3c7; color: #92400e; }
+.wa-item-bottom { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
 .wa-unread {
   background: #22c55e;
   color: #fff;
@@ -1790,10 +1791,34 @@
   color: #98a59a;
   font-size: 13px;
 }
+/* === RESPONSIVE: tablet & mobile === */
 @media (max-width: 900px) {
-  .wa-layout { grid-template-columns: 1fr; height: auto; }
-  .wa-list { max-height: 320px; }
+  .wa-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 60vh;
+  }
+  .wa-layout.show-chat .wa-list-col { display: none; }
+  .wa-layout.show-chat .wa-chat-col { display: flex; min-height: 60vh; }
+  .wa-list-col:not(.show-chat) { display: flex; }
+  .wa-list { max-height: 50vh; }
   .wa-msgs { min-height: 300px; }
+  .wa-chat-head { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .wa-close-btn { font-size: 10px !important; padding: 6px 8px !important; }
+  .wa-reply-row { gap: 6px; padding: 10px 10px; }
+  .wa-reply-row input { padding: 10px 12px; font-size: 12px; }
+}
+@media (max-width: 600px) {
+  .wa-layout { min-height: 80vh; gap: 10px; }
+  .wa-layout.show-chat .wa-chat-col { min-height: 70vh; }
+  .wa-list-col { border-radius: 10px; }
+  .wa-chat-col { border-radius: 10px; }
+  .wa-chat-head-info b { font-size: 13px; }
+  .wa-bubble { max-width: 85%; font-size: 12px; padding: 8px 11px; border-radius: 12px; }
+  .wa-empty-chat { font-size: 12px; }
+  .wa-empty-chat svg { width: 32px; height: 32px; }
+  .filter-tabs { gap: 4px; padding: 8px 10px; }
+  .filter-tabs button { font-size: 9px; padding: 4px 8px; }
 }
 
 /* ===== KONTAK WA + BROADCAST TARGET ===== */
@@ -1873,6 +1898,69 @@
   border: none;
   background: transparent;
   color: #15803d;
+
+/* === RESPONSIVE WA-CONTACT TABLE === */
+@media (max-width: 900px) {
+  .wa-contact-thead,
+  .wa-contact-row {
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 8px;
+  }
+  .wa-contact-thead > span:nth-child(n+4),
+  .wa-contact-row > span:nth-child(n+4) {
+    display: none;
+  }
+  .wa-contact-filter {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .wa-contact-filter select {
+    min-width: 140px;
+  }
+  .wa-contact-count {
+    order: 3;
+    width: 100%;
+    margin-top: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .wa-contact-thead,
+  .wa-contact-row {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px;
+    padding: 12px 10px;
+    font-size: 12px;
+  }
+  .wa-contact-thead > span:nth-child(n+3),
+  .wa-contact-row > span:nth-child(n+3) {
+    display: none;
+  }
+  .wa-cat-cell {
+    justify-content: flex-start;
+  }
+  .wa-cat-chip {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  .wa-contact-filter select {
+    min-width: 120px;
+    font-size: 11px;
+    padding: 8px 10px;
+  }
+  .wa-inline-input {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+  .coupon-actions {
+    gap: 4px !important;
+  }
+  .coupon-actions button {
+    width: 32px;
+    height: 32px;
+  }
+}
+
   font-size: 13px;
   line-height: 1;
   cursor: pointer;

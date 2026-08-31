@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
-import { Bot, BookUser, CheckCircle2, Download, LogOut, MessageCircle, Pencil, Plus, QrCode, Radio, RefreshCw, Search, Send, Trash2, User, XCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Bot, BookUser, CheckCircle2, Download, Loader, LogOut, MessageCircle, MessageSquare, Pencil, Plus, QrCode, Radio, RefreshCw, Search, Send, Trash2, User, X, XCircle } from "lucide-react";
 import { api, errorText, formatDateTime } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 
@@ -309,6 +310,9 @@ export function WaInbox() {
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [mobileShowChat, setMobileShowChat] = useState(false);
+  const [urlMatched, setUrlMatched] = useState(false);
+  const navigate = useNavigate();
   const bottomRef = useRef(null);
 
   const loadConvs = () => {
@@ -349,6 +353,29 @@ export function WaInbox() {
   };
   useEffect(() => { if (activeId) loadMessages(activeId, false); }, []);
 
+  const closeChat = () => { setActiveId(null); setMessages([]); setReply(""); setMobileShowChat(false); };
+
+  // Auto match URL ?chat= param
+  useEffect(() => {
+    if (urlMatched || convs.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const chat = params.get("chat");
+    if (!chat) { setUrlMatched(true); return; }
+    const match = convs.find(c => c.id === chat || c.phone === chat || (c.id || "").includes(chat));
+    if (match) {
+      setActiveId(match.id);
+      setMobileShowChat(true);
+      api.post("/admin/wa/conversations/" + match.id + "/read").catch(() => {});
+      setConvs(prev => prev.map(x => x.id === match.id ? { ...x, unreadCount: 0 } : x));
+      api.get("/admin/wa/conversations/" + match.id + "/messages").then(r => {
+        setMessages(r.data);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+      }).catch(() => {});
+    }
+    window.history.replaceState({}, "", "/admin/wa-chat");
+    setUrlMatched(true);
+  }, [convs, urlMatched]);
+
   const toggleMode = async () => {
     if (!activeConv) return;
     const next = activeConv.mode === "AUTO" ? "MANUAL" : "AUTO";
@@ -378,7 +405,7 @@ export function WaInbox() {
         </div>
       </div>
 
-      <div className="wa-layout">
+      <div className={`wa-layout ${mobileShowChat && activeId ? "show-chat" : ""}`}>
         {/* Kolom kiri: daftar percakapan */}
         <div className="wa-list-col">
           <div className="wa-search-row">
@@ -415,15 +442,20 @@ export function WaInbox() {
           )}
           {activeConv && (
             <>
+              <div className="wa-chat-actions-row" style={{display:"flex",gap:6,padding:"6px 14px",borderBottom:"1px solid #eef2ee",alignItems:"center"}}>
+                <button className={`btn btn-sm ${activeConv.mode === "AUTO" ? "btn-outline" : "btn-primary"} wa-mode-btn`} onClick={toggleMode} data-testid="wa-toggle-mode" style={{fontSize:11}}>
+                  {activeConv.mode === "AUTO" ? "🤖 Auto" : "👤 Manual"}
+                </button>
+                <button className="btn btn-outline btn-sm wa-close-btn" onClick={closeChat} title="Tutup chat" style={{fontSize:11,color:"#dc2626",borderColor:"#fecaca"}}>
+                  <X size={13}/> Tutup
+                </button>
+              </div>
               <div className="wa-chat-head">
                 <div className="wa-avatar big">{(activeConv.name || "?")[0].toUpperCase()}</div>
                 <div className="wa-chat-head-info">
                   <b>{activeConv.name}</b>
                   <span>+{activeConv.phone}</span>
                 </div>
-                <button className={`btn ${activeConv.mode === "AUTO" ? "btn-outline" : "btn-primary"} wa-mode-btn`} onClick={toggleMode} data-testid="wa-toggle-mode">
-                  {activeConv.mode === "AUTO" ? <><Bot size={15} /> Mode Auto — klik untuk Manual</> : <><User size={15} /> Mode Manual — klik untuk Auto</>}
-                </button>
               </div>
 
               <div className="wa-msgs" data-testid="wa-message-area">
@@ -465,6 +497,7 @@ export function WaInbox() {
 
 /* ================= HALAMAN KONTAK WA ================= */
 export function WaContacts() {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState(null);
   const [cats, setCats] = useState([]);
   const [q, setQ] = useState("");
@@ -642,6 +675,7 @@ export function WaContacts() {
                 </span>
                 <span><StatusBadge status={c.source === "inbox" ? "PENDING" : c.source === "order" ? "APPROVED" : "DRAFT"} /></span>
                 <span className="coupon-actions">
+                  <button className="icon-button" title="Chat" onClick={() => navigate("/admin/wa-chat?chat=" + encodeURIComponent(c.id))} style={{color:"#25D366"}}><MessageCircle size={14} /></button>
                   <button className="icon-button" title="Edit" onClick={() => startEdit(c)}><Pencil size={14} /></button>
                   <button className="icon-button danger" title="Hapus" onClick={() => removeContact(c)}><Trash2 size={14} /></button>
                 </span>

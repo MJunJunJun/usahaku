@@ -1786,8 +1786,7 @@ async def wa_conversations_list(filter: str = "all", q: str = "", limit: int = 5
             if q.strip():
                 q_lower = q.strip().lower()
                 result = [r for r in result if q_lower in (r.get("name","") + r.get("phone","")).lower()]
-            if filter == "unread":
-                result = [r for r in result if r.get("unreadCount", 0) > 0]
+            # FIRST: merge mode from DB
             try:
                 cfg = await db.settings.find_one({"id": "wa_config"}) or {}
                 global_auto = cfg.get("globalAuto", True)
@@ -1806,6 +1805,13 @@ async def wa_conversations_list(filter: str = "all", q: str = "", limit: int = 5
                         r["mode"] = "AUTO" if global_auto else "MANUAL"
             except Exception as e:
                 log.warning("mode merge error: %s", e)
+            # THEN: apply filters
+            if filter == "unread":
+                result = [r for r in result if r.get("unreadCount", 0) > 0]
+            if filter == "AUTO":
+                result = [r for r in result if r.get("mode") == "AUTO"]
+            if filter == "MANUAL":
+                result = [r for r in result if r.get("mode") == "MANUAL"]
             return result
     except Exception as e:
         log.warning("wa_conversations_list error: %s", e)
