@@ -45,12 +45,12 @@ export function AuthPage({ register = false }) {
   }, [nav]);
 
   const validateForm = () => {
-    if (!form.name.trim()) return "Nama lengkap wajib diisi";
-    if (!form.whatsapp.trim()) return "Nomor WhatsApp wajib diisi";
+    if (register && !form.name.trim()) return "Nama lengkap wajib diisi";
+    if (register && !form.whatsapp.trim()) return "Nomor WhatsApp wajib diisi";
     if (!form.email.trim()) return "Email wajib diisi";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Format email tidak valid";
     if (form.password.length < 6) return "Password minimal 6 karakter";
-    if (form.password !== form.confirmPassword) return "Konfirmasi password tidak cocok";
+    if (register && form.password !== form.confirmPassword) return "Konfirmasi password tidak cocok";
     return null;
   };
 
@@ -66,18 +66,13 @@ export function AuthPage({ register = false }) {
 
     setBusy(true);
     try {
-      // 1. Kirim kode verifikasi WA
-      await api.post("/auth/send-wa-code", { phone: form.whatsapp, name: form.name });
-      
-      // 2. Simpan data pendaftaran ke sessionStorage (10 menit TTL)
-      const pendingData = {
-        ...form,
-        createdAt: new Date().toISOString()
-      };
-      sessionStorage.setItem("pendingRegistration", JSON.stringify(pendingData));
-      
-      // 3. Redirect ke halaman verifikasi
-      nav("/verify-wa");
+      const endpoint = register ? "/auth/register" : "/auth/login";
+      const payload = register
+        ? { name: form.name, email: form.email, password: form.password }
+        : { email: form.email, password: form.password };
+      const r = await api.post(endpoint, payload);
+      const role = r?.data?.role || "";
+      nav(role === "ADMIN" ? "/admin" : "/dashboard");
     } catch (ex) {
       setErr(errorText(ex));
     } finally {
