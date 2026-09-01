@@ -141,6 +141,15 @@ class RegisterInput(AuthInput):
     whatsapp: str = ""
     phone: str = ""
 
+class WaSendInput(BaseModel):
+    phone: str
+    name: Optional[str] = None
+
+class WaVerifyInput(BaseModel):
+    phone: str
+    code: str
+    name: Optional[str] = None
+
 class WebsiteInput(BaseModel):
     businessName: str
     category: str = "Lainnya"
@@ -340,9 +349,17 @@ async def register(data: RegisterInput, response: Response, request: Request):
     email = data.email.lower().strip()
     if await db.users.find_one({"email": email}): raise HTTPException(409, "Email sudah terdaftar")
     if len(data.password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
+    phone_raw = (data.whatsapp or data.phone or "").strip()
+    phone = wa_service.normalize_number(phone_raw)
+    if phone_raw and not phone:
+        raise HTTPException(400, "Nomor WhatsApp tidak valid")
+    if phone:
+        rec = await db.wa_verifications.find_one({"phone": phone}, {"_id": 0})
+        is_verified = bool(rec and rec.get("verified") and rec.get("expiresAt", "") >= now())
+        if not is_verified:
+            raise HTTPException(400, "Nomor WhatsApp belum diverifikasi. Masukkan kode verifikasi terlebih dahulu.")
     start = datetime.now(timezone.utc)
     end = start + timedelta(days=TRIAL_DAYS)
-    phone = (data.whatsapp or data.phone or "").strip()
     user = {"id": uid(), "name": data.name.strip(), "email": email, "password_hash": hash_password(data.password), "role": "USER", "accountStatus": "ACTIVE", "subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": start.isoformat(), "trialEndDate": end.isoformat(), "planSlug": "trial", "websiteQuota": 1, "additionalWebsiteQuota": 0, "whatsapp": phone, "phone": phone, "createdAt": now()}
     try:
 
@@ -353,8 +370,48 @@ async def register(data: RegisterInput, response: Response, request: Request):
         raise HTTPException(409, "Nomor WhatsApp sudah terdaftar pada akun lain")
 
     await notify(user["id"], "Selamat datang di UsahaKu", "Trial gratis 30 hari kamu sudah aktif. Yuk buat website pertamamu!")
+    if phone:
+        await db.wa_verifications.delete_one({"phone": phone})
     response.set_cookie("access_token", token(user["id"], days=AUTH_COOKIE_DAYS), httponly=True, samesite="lax", max_age=AUTH_COOKIE_DAYS*86400, secure=(request.url.scheme == "https"))
     return public(user)
+
+@api.post("/auth/send-wa-code")
+async def send_wa_code(data: WaSendInput):
+    phone = wa_service.normalize_number(data.phone)
+    if not phone:
+        raise HTTPException(400, "Nomor WhatsApp tidak valid")
+    code = f"{secrets.randbelow(1000000):06d}"
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    await db.wa_verifications.update_one(
+        {"phone": phone},
+        {"$set": {"phone": phone, "code": code, "expiresAt": expires, "verified": False, "name": (data.name or ""), "createdAt": now(), "updatedAt": now()}},
+        upsert=True,
+    )
+    msg = f"Kode verifikasi UsahaKu: {code}. Berlaku 10 menit."
+    send_res = await wa_service.send_text(db, phone, msg, event="wa_verify")
+    if not send_res.get("ok"):
+        await wa_service.notify_admin(
+            db,
+            f"Kode verifikasi pendaftaran untuk {phone}: {code}. Mohon kirim ke calon pengguna.",
+            event="wa_verify_admin_fallback",
+        )
+        return {"ok": True, "message": "Kode verifikasi dibuat. Admin akan mengirimkan kode ke WhatsApp Anda."}
+    return {"ok": True, "message": "Kode verifikasi terkirim ke WhatsApp Anda."}
+
+@api.post("/auth/verify-wa")
+async def verify_wa(data: WaVerifyInput):
+    phone = wa_service.normalize_number(data.phone)
+    if not phone:
+        raise HTTPException(400, "Nomor WhatsApp tidak valid")
+    rec = await db.wa_verifications.find_one({"phone": phone}, {"_id": 0})
+    if not rec or rec.get("code") != data.code.strip() or rec.get("expiresAt", "") < now():
+        raise HTTPException(400, "Kode verifikasi tidak valid atau sudah kedaluwarsa")
+    await db.wa_verifications.update_one(
+        {"phone": phone},
+        {"$set": {"verified": True, "verifiedAt": now(), "name": (data.name or rec.get("name", "")), "updatedAt": now()}},
+    )
+    await upsert_wa_contact(phone, name=(data.name or rec.get("name", "")), source="verification")
+    return {"ok": True, "message": "Nomor WhatsApp berhasil diverifikasi"}
 
 @api.post("/auth/login")
 async def login(data: AuthInput, response: Response, request: Request):
@@ -1857,6 +1914,7 @@ async def startup():
         # Buku kontak WA: nomor unik
         await db.wa_contacts.create_index("phone", unique=True)
         await db.wa_contacts.create_index("categories")
+        await db.wa_verifications.create_index("phone", unique=True)
     except Exception as exc:
         log.warning("Index creation note: %s", exc)
 
