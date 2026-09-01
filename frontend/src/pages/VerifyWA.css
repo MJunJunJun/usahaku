@@ -1,3 +1,13 @@
+/* VerifyWA.css - tombol verifikasi hijau seperti beranda */
+
+:root {
+  --green: #16a34a;
+  --dark: #14532d;
+  --green-hover: #15803d;
+  --green-shadow: rgba(20, 83, 45, 0.14);
+  --green-shadow-hover: rgba(20, 83, 45, 0.25);
+}
+
 .verify-page {
   min-height: 100vh;
   display: flex;
@@ -29,8 +39,8 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: var(--primary-bg);
-  color: var(--primary);
+  background: #dcfce7;
+  color: var(--green);
   margin-bottom: 1rem;
 }
 
@@ -53,25 +63,25 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background: var(--warning-bg, #fffbeb);
-  border: 1px solid var(--warning-border, #fde68a);
+  background: #fffbeb;
+  border: 1px solid #fde68a;
   border-radius: 8px;
   margin-bottom: 1.5rem;
-  color: var(--warning-text, #92400e);
+  color: #92400e;
   font-size: 0.9rem;
 }
 
 .timer-bar strong {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'Monaco', 'Menlo', monospace;
   font-size: 1.1rem;
 }
 
 .form-info {
   padding: 0.75rem 1rem;
-  background: var(--success-bg, #ecfdf5);
-  border: 1px solid var(--success-border, #a7f3d0);
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
   border-radius: 8px;
-  color: var(--success-text, #065f46);
+  color: #065f46;
   font-size: 0.9rem;
   margin-bottom: 1rem;
 }
@@ -81,10 +91,10 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background: var(--error-bg, #fef2f2);
-  border: 1px solid var(--error-border, #fecaca);
+  background: #fef2f2;
+  border: 1px solid #ef4444;
   border-radius: 8px;
-  color: var(--error-text, #991b1b);
+  color: #991b1b;
   font-size: 0.9rem;
   margin-bottom: 1rem;
 }
@@ -116,8 +126,8 @@ form input {
 
 form input:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-bg);
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
 }
 
 form input:disabled {
@@ -125,43 +135,66 @@ form input:disabled {
   cursor: not-allowed;
 }
 
-.btn {
+/* ========== TOMBOL VERIFIKASI HIJAU (sama seperti beranda) ========== */
+.btn-verify {
+  border: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.875rem 1.5rem;
-  border: none;
+  gap: 8px;
   border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
+  padding: 16px 24px;
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s;
+  width: 100%;
+  background: var(--green);
+  color: white;
+  box-shadow: 0 4px 12px var(--green-shadow);
+  transition: all 0.2s ease;
 }
 
-.btn:disabled {
+.btn-verify:hover:not(:disabled) {
+  background: var(--green-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px var(--green-shadow-hover);
+}
+
+.btn-verify:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-verify:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
-.btn-primary {
-  background: var(--primary);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.05);
-}
-
+/* Tombol ghost (kirim ulang, batal) */
 .btn-ghost {
   background: transparent;
-  color: var(--primary);
-  border: 1px solid var(--primary);
+  color: var(--green);
+  border: 1px solid var(--green);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s ease;
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: var(--primary-bg);
+  background: #f0fdf4;
+}
+
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .resend-area {
@@ -193,21 +226,13 @@ form input:disabled {
   to { transform: rotate(360deg); }
 }
 
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-  .timer-bar {
-    background: rgba(245, 158, 11, 0.15);
-    border-color: rgba(245, 158, 11, 0.3);
-    color: #fbbf24;
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .verify-card {
+    padding: 2rem 1.5rem;
   }
-  .form-info {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: rgba(16, 185, 129, 0.3);
-    color: #6ee7b7;
-  }
-  .form-error {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #fca5a5;
+  .btn-verify {
+    padding: 14px 20px;
+    font-size: 15px;
   }
 }

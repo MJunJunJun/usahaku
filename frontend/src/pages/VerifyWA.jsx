@@ -1,37 +1,31 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api, errorText } from "../lib/api";
 import { AlertCircle, CheckCircle, Loader2, Clock } from "lucide-react";
 import "./VerifyWA.css";
 
 export default function VerifyWA() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [timeLeft, setTimeLeft] = useState(600); // 10 menit = 600 detik
+  const [timeLeft, setTimeLeft] = useState(600);
   const [formData, setFormData] = useState(null);
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Ambil data pendaftaran dari sessionStorage saat mount
   useEffect(() => {
     const stored = sessionStorage.getItem("pendingRegistration");
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        // Cek apakah data tidak expired (10 menit dari createdAt)
         const createdAt = new Date(parsed.createdAt).getTime();
         const now = Date.now();
         const elapsed = (now - createdAt) / 1000;
         if (elapsed < 600) {
           setFormData(parsed);
           setTimeLeft(Math.max(0, 600 - Math.floor(elapsed)));
-          // Kirim ulang kode otomatis saat mount (optional, bisa dihapus kalau tidak mau)
-          // sendWaCode();
         } else {
-          // Expired, hapus dan redirect ke register
           sessionStorage.removeItem("pendingRegistration");
           navigate("/register");
         }
@@ -40,12 +34,10 @@ export default function VerifyWA() {
         navigate("/register");
       }
     } else {
-      // Tidak ada data pending, redirect ke register
       navigate("/register");
     }
   }, [navigate]);
 
-  // Timer countdown 10 menit
   useEffect(() => {
     if (timeLeft <= 0) return;
     const timer = setInterval(() => {
@@ -86,7 +78,7 @@ export default function VerifyWA() {
     try {
       await api.post("/auth/send-wa-code", { phone: formData.whatsapp, name: formData.name });
       setMsg("Kode verifikasi terkirim ke WhatsApp Anda.");
-      setResendCooldown(60); // Cooldown 60 detik sebelum bisa kirim ulang
+      setResendCooldown(60);
     } catch (ex) {
       setErr(errorText(ex));
     } finally {
@@ -100,7 +92,6 @@ export default function VerifyWA() {
     setErr("");
     setMsg("");
     try {
-      // 1. Verifikasi kode WA
       const verifyRes = await api.post("/auth/verify-wa", { phone: formData.whatsapp, code });
       if (!verifyRes.data || !verifyRes.data.ok) {
         setErr("Kode verifikasi salah atau sudah kedaluwarsa.");
@@ -108,7 +99,6 @@ export default function VerifyWA() {
         return;
       }
 
-      // 2. Daftar akun (register)
       const registerData = {
         name: formData.name,
         email: formData.email,
@@ -117,12 +107,10 @@ export default function VerifyWA() {
       };
       const regRes = await api.post("/auth/register", registerData);
       
-      // 3. Auto-login
       const loginRes = await api.post("/auth/login", { email: formData.email, password: formData.password });
       localStorage.setItem("user", JSON.stringify(loginRes.data));
       sessionStorage.removeItem("pendingRegistration");
       
-      // 4. Redirect ke dashboard/admin
       navigate(loginRes.data.role === "ADMIN" ? "/admin" : "/dashboard");
     } catch (ex) {
       setErr(errorText(ex));
@@ -169,7 +157,7 @@ export default function VerifyWA() {
 
         <form onSubmit={(e) => { e.preventDefault(); verifyAndRegister(); }}>
           <label>
-            Kode Verifikasi
+            <span>Kode Verifikasi</span>
             <input
               type="text"
               inputMode="numeric"
@@ -184,8 +172,8 @@ export default function VerifyWA() {
             />
           </label>
 
-          <button type="submit" className="btn btn-primary" disabled={busy || code.length < 4}>
-            {busy ? <><Loader2 size={16} className="spin" /> Memverifikasi...</> : "Verifikasi & Masuk"}
+          <button type="submit" className="btn btn-verify" disabled={busy || code.length < 4}>
+            {busy ? <><Loader2 size={16} className="spin" /> Memverifikasi...</> : <><CheckCircle size={18} /> Verifikasi Sekarang</>}
           </button>
         </form>
 
