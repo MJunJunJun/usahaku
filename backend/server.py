@@ -138,6 +138,8 @@ class AuthInput(BaseModel):
 
 class RegisterInput(AuthInput):
     name: str
+    whatsapp: str = ""
+    phone: str = ""
 
 class WebsiteInput(BaseModel):
     businessName: str
@@ -340,7 +342,8 @@ async def register(data: RegisterInput, response: Response, request: Request):
     if len(data.password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
     start = datetime.now(timezone.utc)
     end = start + timedelta(days=TRIAL_DAYS)
-    user = {"id": uid(), "name": data.name.strip(), "email": email, "password_hash": hash_password(data.password), "role": "USER", "accountStatus": "ACTIVE", "subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": start.isoformat(), "trialEndDate": end.isoformat(), "planSlug": "trial", "websiteQuota": 1, "additionalWebsiteQuota": 0, "createdAt": now()}
+    phone = (data.whatsapp or data.phone or "").strip()
+    user = {"id": uid(), "name": data.name.strip(), "email": email, "password_hash": hash_password(data.password), "role": "USER", "accountStatus": "ACTIVE", "subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": start.isoformat(), "trialEndDate": end.isoformat(), "planSlug": "trial", "websiteQuota": 1, "additionalWebsiteQuota": 0, "whatsapp": phone, "phone": phone, "createdAt": now()}
     try:
 
         await db.users.insert_one(user)
@@ -1019,6 +1022,34 @@ async def admin_user_detail(uid_: str, _=Depends(admin_user)):
     u["websites"] = await db.websites.find({"userId": uid_}, {"_id": 0}).to_list(100)
     u["payments"] = await db.payments.find({"userId": uid_}, {"_id": 0}).sort("createdAt", -1).to_list(50)
     return u
+
+@api.delete("/admin/users/{uid_}")
+async def admin_user_delete(uid_: str, admin=Depends(admin_user)):
+    user = await db.users.find_one({"id": uid_}, {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1})
+    if not user:
+        raise HTTPException(404, "User tidak ditemukan")
+    if user.get("role") == "ADMIN":
+        raise HTTPException(400, "Akun admin tidak dapat dihapus")
+
+    file_docs = await db.files.find({"userId": uid_}, {"_id": 0, "localPath": 1}).to_list(500)
+    for f in file_docs:
+        local_path = f.get("localPath")
+        if local_path and os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except Exception:
+                pass
+
+    await db.users.delete_one({"id": uid_})
+    await db.websites.delete_many({"userId": uid_})
+    await db.payments.delete_many({"userId": uid_})
+    await db.notifications.delete_many({"userId": uid_})
+    await db.password_reset_tokens.delete_many({"userId": uid_})
+    await db.files.delete_many({"userId": uid_})
+    await db.coupon_redemptions.delete_many({"userId": uid_})
+
+    await log_activity(admin["id"], "delete_user", target_user_id=uid_, notes=f"Hapus user {user.get('email', '')}")
+    return {"ok": True}
 
 @api.post("/admin/users/{uid_}/action")
 async def admin_user_action(uid_: str, data: UserAdminAction, admin=Depends(admin_user)):

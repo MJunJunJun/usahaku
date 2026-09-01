@@ -142,6 +142,7 @@ export function AdminUserDetail() {
         <div className="wizard-card">
           <div className="eyebrow">INFO AKUN</div>
           <div className="info-rows">
+            <div><small>NOMOR TELEPON</small><b>{u.whatsapp || u.phone || "-"}</b></div>
             <div><small>PAKET</small><b>{u.planSlug || "trial"}</b></div>
             <div><small>KUOTA WEBSITE</small><b>{u.websiteQuota || 1}</b></div>
             <div><small>WEBSITE TAMBAHAN</small><b>{u.additionalWebsiteQuota || 0}</b></div>

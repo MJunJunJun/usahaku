@@ -68,7 +68,7 @@ export function AuthPage({ register = false }) {
     try {
       const endpoint = register ? "/auth/register" : "/auth/login";
       const payload = register
-        ? { name: form.name, email: form.email, password: form.password }
+        ? { name: form.name, email: form.email, password: form.password, whatsapp: form.whatsapp, phone: form.whatsapp }
         : { email: form.email, password: form.password };
       const r = await api.post(endpoint, payload);
       const role = r?.data?.role || "";
