@@ -1874,6 +1874,19 @@ async def wa_media_download(message_id: str, _=Depends(admin_user)):
     return FastResp(content=content, media_type=ctype,
                     headers={"Content-Disposition": f'attachment; filename="wa-{message_id[:12]}.{ext}"'})
 
+
+@api.post("/auth/check-wa")
+async def check_wa(payload: dict):
+    """Check whether a WhatsApp number is already registered. Returns 409 if taken."""
+    phone_raw = payload.get("phone") if isinstance(payload, dict) else getattr(payload, "phone", "")
+    phone = wa_service.normalize_number(phone_raw)
+    if not phone:
+        raise HTTPException(400, "Nomor WhatsApp tidak valid")
+    async for u in db.users.find({}, {"whatsapp": 1}):
+        if wa_service.normalize_number(u.get("whatsapp", "")) == phone:
+            raise HTTPException(409, "Nomor WhatsApp sudah terdaftar")
+    return {"ok": True}
+
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origin_regex=".*", allow_methods=["*"], allow_headers=["*"])
 
@@ -1961,21 +1974,3 @@ async def shutdown():
         client.close()
     except Exception:
         pass
-# helper payload to insert into server.py
-
-check_wa_handler = '''
-@api.post("/auth/check-wa")
-async def check_wa(payload: dict):
-    """Check whether a WhatsApp number is already registered. Returns 409 if taken."""
-    phone_raw = payload.get("phone") if isinstance(payload, dict) else getattr(payload, "phone", "")
-    phone = wa_service.normalize_number(phone_raw)
-    if not phone:
-        raise HTTPException(400, "Nomor WhatsApp tidak valid")
-    # Scan users collection and compare normalized numbers to avoid format mismatch
-    async for u in db.users.find({}, {"whatsapp": 1}):
-        if wa_service.normalize_number(u.get("whatsapp", "")) == phone:
-            raise HTTPException(409, "Nomor WhatsApp sudah terdaftar")
-    return {"ok": True}
-'''
-
-print('ok')
