@@ -66,13 +66,22 @@ export function AuthPage({ register = false }) {
 
     setBusy(true);
     try {
-      const endpoint = register ? "/auth/register" : "/auth/login";
-      const payload = register
-        ? { name: form.name, email: form.email, password: form.password, whatsapp: form.whatsapp, phone: form.whatsapp }
-        : { email: form.email, password: form.password };
-      const r = await api.post(endpoint, payload);
-      const role = r?.data?.role || "";
-      nav(role === "ADMIN" ? "/admin" : "/dashboard");
+      if (register) {
+        const pendingRegistration = {
+          name: form.name.trim(),
+          email: form.email.trim(),
+          password: form.password,
+          whatsapp: form.whatsapp.trim(),
+          createdAt: new Date().toISOString(),
+        };
+        await api.post("/auth/send-wa-code", { phone: pendingRegistration.whatsapp, name: pendingRegistration.name });
+        sessionStorage.setItem("pendingRegistration", JSON.stringify(pendingRegistration));
+        nav("/verify-wa");
+      } else {
+        const r = await api.post("/auth/login", { email: form.email, password: form.password });
+        const role = r?.data?.role || "";
+        nav(role === "ADMIN" ? "/admin" : "/dashboard");
+      }
     } catch (ex) {
       setErr(errorText(ex));
     } finally {
