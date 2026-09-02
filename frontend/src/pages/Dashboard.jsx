@@ -42,11 +42,14 @@ const EmptyState = () => {
     <div className="empty-state">
       <div className="empty-icon"><Store /></div>
       <h3>Belum ada website</h3>
-      <p>Mulai digitalisasi bisnis kamu dengan membuat website pertama, atau coba dulu dengan contoh bisnis.</p>
+      <p>Mulai digitalisasi bisnis kamu dengan membuat website pertama, atau coba dulu dengan contoh bisnis demo.</p>
       <div className="empty-actions">
-        <Link data-testid="empty-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />Buat website</Link>
+        <Link data-testid="empty-create-button" className="btn btn-primary" to="/dashboard/websites/create">
+          <Plus size={17} /> Buat website
+        </Link>
+        <span className="empty-actions-divider">atau</span>
         <button data-testid="empty-demo-button" className="btn btn-outline" onClick={seedDemo} disabled={busy}>
-          <Sparkles size={16} />{busy ? "Menyiapkan..." : "Coba dengan demo Kopi Senja"}
+          <Sparkles size={16} /> {busy ? "Menyiapkan..." : "Coba dengan web demo"}
         </button>
       </div>
     </div>
