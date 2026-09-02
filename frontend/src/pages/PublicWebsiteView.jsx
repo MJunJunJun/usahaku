@@ -176,9 +176,11 @@ export default function PublicWebsiteView({ data, embedded = false }) {
     data.mapsUrl ||
     `https://maps.google.com/?q=${encodeURIComponent([data.address, data.city, data.province].filter(Boolean).join(", "))}`;
 
+  const templateStyle = data.templateStyle || data.themeConfig?.style || c.style || "modern";
+
   return (
     <div
-      className={`public-site ${embedded ? "embedded" : ""}`}
+      className={`public-site ${embedded ? "embedded" : ""} template-${templateStyle}`}
       style={{ "--pri": primary, "--acc": accent }}
     >
       {/* 1. TOPBAR / NAVBAR */}

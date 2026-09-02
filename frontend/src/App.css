@@ -2030,3 +2030,142 @@
   font-weight: 600;
   color: #7a847c;
 }
+
+/* ========================================================
+   5 WEBSITE TEMPLATES MODIFIERS (MODERN, WARM, BOLD, MINIMAL, PLAYFUL)
+   ======================================================== */
+
+/* 1. TEMPLATE: MODERN (Default Sleek Glassmorphism) */
+.public-site.template-modern {
+  background: #f8fafc;
+}
+
+/* 2. TEMPLATE: WARM (Cozy Culinary, Cafe, Natural) */
+.public-site.template-warm {
+  background: #fdfbf7;
+  color: #292524;
+}
+.public-site.template-warm .public-nav {
+  background: rgba(253, 251, 247, 0.94);
+  border-bottom: 1px solid #f5ebe0;
+}
+.public-site.template-warm .section-header h3,
+.public-site.template-warm .public-hero h2 {
+  font-family: Georgia, Cambria, "Times New Roman", serif;
+  font-weight: 700;
+}
+.public-site.template-warm .about-content-card,
+.public-site.template-warm .highlight-box,
+.public-site.template-warm .product-card,
+.public-site.template-warm .testimonial-card,
+.public-site.template-warm .info-box {
+  background: #fffefb;
+  border: 1px solid #f3e8d9;
+  border-radius: 26px;
+}
+
+/* 3. TEMPLATE: BOLD (Vibrant, High-Contrast, Dynamic) */
+.public-site.template-bold {
+  background: #0f172a;
+  color: #f8fafc;
+}
+.public-site.template-bold .public-nav {
+  background: rgba(15, 23, 42, 0.95);
+  border-bottom: 1px solid #1e293b;
+  color: #fff;
+}
+.public-site.template-bold .public-brand-title b,
+.public-site.template-bold .public-nav-links a {
+  color: #f8fafc;
+}
+.public-site.template-bold .section-header h3 {
+  color: #ffffff;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.5px;
+}
+.public-site.template-bold .about-content-card,
+.public-site.template-bold .highlight-box,
+.public-site.template-bold .product-card,
+.public-site.template-bold .testimonial-card,
+.public-site.template-bold .info-box,
+.public-site.template-bold .faq-item {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #f1f5f9;
+  border-radius: 12px;
+}
+.public-site.template-bold .product-card-body h4,
+.public-site.template-bold .highlight-box h4,
+.public-site.template-bold .info-box h4,
+.public-site.template-bold .faq-question b,
+.public-site.template-bold .about-text {
+  color: #ffffff;
+}
+.public-site.template-bold .product-card-body p,
+.public-site.template-bold .highlight-box p,
+.public-site.template-bold .info-box p,
+.public-site.template-bold .faq-answer p {
+  color: #94a3b8;
+}
+
+/* 4. TEMPLATE: MINIMAL (Clean Luxury, Boutique) */
+.public-site.template-minimal {
+  background: #ffffff;
+  color: #1e293b;
+}
+.public-site.template-minimal .public-nav {
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
+  box-shadow: none;
+}
+.public-site.template-minimal .section-header h3 {
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 24px;
+}
+.public-site.template-minimal .about-content-card,
+.public-site.template-minimal .highlight-box,
+.public-site.template-minimal .product-card,
+.public-site.template-minimal .testimonial-card,
+.public-site.template-minimal .info-box {
+  background: #ffffff;
+  border: 1px solid #f1f5f9;
+  box-shadow: none;
+  border-radius: 8px;
+}
+.public-site.template-minimal .btn-hero-primary,
+.public-site.template-minimal .public-nav-cta,
+.public-site.template-minimal .product-order-btn {
+  border-radius: 4px;
+}
+
+/* 5. TEMPLATE: PLAYFUL (Casual, Cheerful, Friendly) */
+.public-site.template-playful {
+  background: #faf5ff;
+  color: #3b0764;
+}
+.public-site.template-playful .public-nav {
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 2px dashed #f0abfc;
+}
+.public-site.template-playful .about-content-card,
+.public-site.template-playful .highlight-box,
+.public-site.template-playful .product-card,
+.public-site.template-playful .testimonial-card,
+.public-site.template-playful .info-box {
+  background: #ffffff;
+  border: 2px solid #f5d0fe;
+  border-radius: 32px;
+  box-shadow: 0 10px 25px rgba(217, 70, 239, 0.06);
+}
+.public-site.template-playful .btn-hero-primary,
+.public-site.template-playful .btn-hero-secondary,
+.public-site.template-playful .public-nav-cta,
+.public-site.template-playful .product-order-btn,
+.public-site.template-playful .hero-pill-badge,
+.public-site.template-playful .section-badge {
+  border-radius: 50px;
+}
+

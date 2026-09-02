@@ -1,0 +1,58 @@
+export const WEBSITE_TEMPLATES = [
+  {
+    id: "modern",
+    name: "Modern Glassmorphism",
+    badge: "Sleek & Professional",
+    desc: "Header melayang blur transparan, gradient hero, bento grid modern, cocok untuk semua jenis usaha.",
+    icon: "LayoutTemplate",
+    previewGradient: "linear-gradient(135deg, #16A34A, #14532D)",
+    bgTint: "bg-emerald-50/50 text-emerald-700 border-emerald-200",
+  },
+  {
+    id: "warm",
+    name: "Warm & Natural",
+    badge: "Cozy Culinary & Cafe",
+    desc: "Nuansa hangat alami, sudut rounded lembut, font cozy, cocok untuk kedai kopi, bakery & kuliner.",
+    icon: "Coffee",
+    previewGradient: "linear-gradient(135deg, #8B4513, #3E2723)",
+    bgTint: "bg-amber-50/50 text-amber-700 border-amber-200",
+  },
+  {
+    id: "bold",
+    name: "Bold & Dynamic",
+    badge: "Vibrant & High Contrast",
+    desc: "Banner hero kontras tinggi, typography tegas, tombol mencolok untuk distro, ritel & otomotif.",
+    icon: "Zap",
+    previewGradient: "linear-gradient(135deg, #1E293B, #0F172A)",
+    bgTint: "bg-slate-100 text-slate-800 border-slate-300",
+  },
+  {
+    id: "minimal",
+    name: "Minimalist Luxury",
+    badge: "Clean & Elegant",
+    desc: "Desain bersih dengan garis tipis, spasi lapang, font teratur untuk fashion, butik & klinik.",
+    icon: "Sparkles",
+    previewGradient: "linear-gradient(135deg, #475569, #0F172A)",
+    bgTint: "bg-indigo-50/50 text-indigo-700 border-indigo-200",
+  },
+  {
+    id: "playful",
+    name: "Playful & Friendly",
+    badge: "Casual & Cheerful",
+    desc: "Tombol dan kartu bentuk pill ceria, badge ramah, cocok untuk jajanan, hampers & produk anak.",
+    icon: "Smile",
+    previewGradient: "linear-gradient(135deg, #DB2777, #831843)",
+    bgTint: "bg-pink-50/50 text-pink-700 border-pink-200",
+  },
+];
+
+export const COLOR_PALETTES = [
+  { id: "emerald", name: "Emerald Fresh", primary: "#16A34A", accent: "#14532D" },
+  { id: "mocha", name: "Kopi Warm Mocha", primary: "#8B4513", accent: "#3E2723" },
+  { id: "ocean", name: "Ocean Professional", primary: "#2563EB", accent: "#1E3A8A" },
+  { id: "amber", name: "Sunset Amber", primary: "#D97706", accent: "#78350F" },
+  { id: "rose", name: "Rose & Beauty", primary: "#DB2777", accent: "#831843" },
+  { id: "purple", name: "Purple Luxury", primary: "#7C3AED", accent: "#4C1D95" },
+  { id: "charcoal", name: "Charcoal Premium", primary: "#1E293B", accent: "#0F172A" },
+  { id: "teal", name: "Teal Fresh", primary: "#0D9488", accent: "#115E59" },
+];

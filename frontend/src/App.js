@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import "@/App.css";
+import "./App.css";
 import Landing from "./pages/Landing";
 import VerifyWA from "./pages/VerifyWA";
 import { AuthPage, ForgotPassword, ResetPassword } from "./pages/Auth";

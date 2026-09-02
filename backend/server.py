@@ -169,6 +169,8 @@ class WebsiteInput(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     customDomain: str = ""
+    templateStyle: Optional[str] = "modern"
+    themeConfig: Optional[dict] = None
 
 class TrackInput(BaseModel):
     type: str  # view | whatsapp
@@ -483,7 +485,10 @@ async def create_website(data: WebsiteInput, user=Depends(current_user)):
     q = quota_for(user)
     if count >= q:
         raise HTTPException(403, "Limit website Anda sudah tercapai. Silakan upgrade paket atau tambah kuota website.")
-    website = {"id": uid(), "userId": user["id"], **data.model_dump(), "status": "DRAFT", "slug": "", "themeConfig": {"primary": "#16A34A", "style": "modern"}, "aiGeneratedContent": {}, "businessHours": [], "sectionVisibility": dict(DEFAULT_SECTION_VISIBILITY), "contactCards": dict(DEFAULT_CONTACT_CARDS), "mapsUrl": "", "createdAt": now(), "updatedAt": now()}
+    t_style = data.templateStyle or "modern"
+    t_config = data.themeConfig or {"primary": "#16A34A", "accent": "#14532D", "style": t_style}
+    if "style" not in t_config: t_config["style"] = t_style
+    website = {"id": uid(), "userId": user["id"], **data.model_dump(), "status": "DRAFT", "slug": "", "templateStyle": t_style, "themeConfig": t_config, "aiGeneratedContent": {}, "businessHours": [], "sectionVisibility": dict(DEFAULT_SECTION_VISIBILITY), "contactCards": dict(DEFAULT_CONTACT_CARDS), "mapsUrl": "", "createdAt": now(), "updatedAt": now()}
     await db.websites.insert_one(website)
     return public(website)
 

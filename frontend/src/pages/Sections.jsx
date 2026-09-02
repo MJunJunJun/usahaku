@@ -10,6 +10,7 @@ import { api, errorText } from "../lib/api";
 import { Button, FormError, Loading } from "../lib/shared";
 import { Switch } from "../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
 
 const ICON_MAP = {
   ShieldCheck, Sparkles, Award, HeartHandshake, Coffee, MessageCircle, Flame,
@@ -154,6 +155,9 @@ const emptyTestimonial = () => ({ name: "", role: "Pelanggan", comment: "", rati
 const emptyFaq = () => ({ q: "", a: "" });
 
 export const makeDefaultSections = () => ({
+  templateStyle: "modern",
+  primaryColor: "#16A34A",
+  accentColor: "#14532D",
   highlightsVisible: true,
   testimonialsVisible: true,
   faqVisible: true,
@@ -263,6 +267,67 @@ export function SectionForm({ site = {}, cfg, set }) {
         <EyeOff size={16} className="mt-0.5 shrink-0 text-emerald-600" />
         <span>Section yang dimatikan <b>(OFF)</b> tidak akan muncul di halaman utama website. Gunakan dropdown <b>Preset template</b> untuk mengisi konten secara instan.</span>
       </div>
+
+      {/* TEMPLATE & COLOR PALETTE SELECTOR */}
+      {cfg.templateStyle && (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="text-emerald-600" size={18} />
+              <h3 className="text-sm font-bold text-slate-800">Pilihan Template Website &amp; Palet Warna</h3>
+            </div>
+            <span className="text-xs font-semibold uppercase text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">5 Alternatif</span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {WEBSITE_TEMPLATES.map((tpl) => {
+              const active = cfg.templateStyle === tpl.id;
+              return (
+                <div
+                  key={tpl.id}
+                  onClick={() => set({ templateStyle: tpl.id })}
+                  className={`cursor-pointer rounded-xl border p-3.5 transition ${
+                    active
+                      ? "border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-400/20 shadow-sm"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      {tpl.badge}
+                    </span>
+                    {active && <Check size={16} className="text-emerald-600" />}
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-900">{tpl.name}</h4>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Color palette options */}
+          <div className="pt-2 border-t border-slate-100">
+            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Skema Warna Utama</label>
+            <div className="flex flex-wrap items-center gap-2">
+              {COLOR_PALETTES.map((pal) => {
+                const active = cfg.primaryColor === pal.primary;
+                return (
+                  <button
+                    key={pal.id}
+                    type="button"
+                    onClick={() => set({ primaryColor: pal.primary, accentColor: pal.accent })}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+                      active ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-400/20" : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="h-4 w-4 rounded-full border border-white shadow-sm" style={{ background: pal.primary }} />
+                    <span>{pal.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SECTION 1: KEUNGGULAN */}
       <SectionCard testid="section-highlights" icon={Trophy} tint="bg-amber-50 text-amber-600"
@@ -493,8 +558,14 @@ export function SectionManager() {
         typeof h === "string" ? { title: h, desc: "", icon: "ShieldCheck" } : h
       );
       const d = makeDefaultSections();
+      const tStyle = site.templateStyle || site.themeConfig?.style || "modern";
+      const pri = site.themeConfig?.primary || "#16A34A";
+      const acc = site.themeConfig?.accent || "#14532D";
       setCfg({
         ...d,
+        templateStyle: tStyle,
+        primaryColor: pri,
+        accentColor: acc,
         highlightsVisible: vis.highlights !== false,
         testimonialsVisible: vis.testimonials !== false,
         faqVisible: vis.faq !== false,
@@ -517,6 +588,11 @@ export function SectionManager() {
     setSaving(true); setErr("");
     try {
       await api.put(`/websites/${id}/sections`, cfg);
+      await api.put(`/websites/${id}/theme`, {
+        style: cfg.templateStyle,
+        primary: cfg.primaryColor,
+        accent: cfg.accentColor,
+      });
       setSaved(true);
       setTimeout(() => nav(`/dashboard/websites/${id}`), 700);
     } catch (e) { setErr(errorText(e)); }

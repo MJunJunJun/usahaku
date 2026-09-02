@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate } from "lucide-react";
+import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile } from "lucide-react";
 import { api, errorText, uploadFile, daysUntil, money, formatDate } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
+import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
 import PublicWebsiteView from "./PublicWebsiteView";
 import { SectionForm, makeDefaultSections } from "./Sections";
 
@@ -160,6 +161,10 @@ export function CreateWebsite() {
   const [form, setForm] = useState({ businessName: "", category: "Coffee Shop", description: "", logoUrl: "", coverImageUrl: "", whatsapp: "", phone: "", email: "", instagram: "", facebook: "", tiktok: "", address: "", city: "", province: "" });
   const [products, setProducts] = useState([{ name: "", description: "", price: "", images: [] }]);
   const [sections, setSections] = useState(makeDefaultSections());
+  const [selectedTemplate, setSelectedTemplate] = useState("modern");
+  const [selectedPalette, setSelectedPalette] = useState("emerald");
+  const [primaryColor, setPrimaryColor] = useState("#16A34A");
+  const [accentColor, setAccentColor] = useState("#14532D");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [quotaInfo, setQuotaInfo] = useState(null);
@@ -167,6 +172,12 @@ export function CreateWebsite() {
   const quotaFull = quotaInfo && quotaInfo.used >= quotaInfo.quota;
   const set = (key, val) => setForm({ ...form, [key]: val });
   const setSectionCfg = (patch) => setSections({ ...sections, ...patch });
+
+  const handlePaletteSelect = (pal) => {
+    setSelectedPalette(pal.id);
+    setPrimaryColor(pal.primary);
+    setAccentColor(pal.accent);
+  };
 
   const uploadLogo = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -191,7 +202,12 @@ export function CreateWebsite() {
   const create = async () => {
     setBusy(true); setErr("");
     try {
-      const w = (await api.post("/websites", form)).data;
+      const createPayload = {
+        ...form,
+        templateStyle: selectedTemplate,
+        themeConfig: { primary: primaryColor, accent: accentColor, style: selectedTemplate },
+      };
+      const w = (await api.post("/websites", createPayload)).data;
       for (const p of products.filter(x => x.name)) {
         await api.post(`/websites/${w.id}/products`, { ...p, price: Number(p.price) || 0 });
       }
@@ -327,20 +343,100 @@ export function CreateWebsite() {
           </>
         )}
         {step === 4 && (
-          <>
-            <div className="generate-panel">
-              <div className="generate-icon"><Sparkles size={28} /></div>
-              <div className="eyebrow">LANGKAH TERAKHIR</div>
-              <h2>Siap dibuat dengan AI.</h2>
-              <p>UsahaKu akan menyusun website berdasarkan informasi <b>{form.businessName || "usahamu"}</b>, {products.filter(x => x.name).length || 0} produk, dan pengaturan section kamu.</p>
-              <div className="generate-list">
-                <span><Check size={16} /> Menganalisis karakter usaha</span>
-                <span><Check size={16} /> Menentukan gaya visual</span>
-                <span><Check size={16} /> Menyusun konten website</span>
-                <span><Check size={16} /> Menerapkan section pilihanmu</span>
+          <div className="space-y-6" data-testid="wizard-step-4">
+            <div>
+              <div className="eyebrow">LANGKAH TERAKHIR · TEMPLATE & PALET WARNA</div>
+              <h2 className="text-xl font-extrabold text-slate-900">Pilih Template & Warna Website</h2>
+              <p className="form-intro">Pilih dari 5 alternatif desain template dan skema warna impian usahamu.</p>
+            </div>
+
+            {/* Pemilih Template Website */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">1. Pilih Template Website (5 Alternatif)</label>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {WEBSITE_TEMPLATES.map((tpl) => {
+                  const active = selectedTemplate === tpl.id;
+                  return (
+                    <div
+                      key={tpl.id}
+                      data-testid={`template-option-${tpl.id}`}
+                      onClick={() => setSelectedTemplate(tpl.id)}
+                      className={`relative cursor-pointer rounded-xl border p-4 transition ${
+                        active
+                          ? "border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-400/30 shadow-md"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                      }`}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {tpl.badge}
+                        </span>
+                        {active && <CheckCircle2 size={18} className="text-emerald-600" />}
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900">{tpl.name}</h4>
+                      <p className="mt-1 text-xs text-slate-500 line-clamp-2">{tpl.desc}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </>
+
+            {/* Pemilih Palet Warna */}
+            <div className="space-y-3 pt-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">2. Pilih Skema / Palet Warna</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {COLOR_PALETTES.map((pal) => {
+                  const active = selectedPalette === pal.id;
+                  return (
+                    <button
+                      key={pal.id}
+                      type="button"
+                      data-testid={`palette-option-${pal.id}`}
+                      onClick={() => handlePaletteSelect(pal)}
+                      className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition ${
+                        active
+                          ? "border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-400/20"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="flex shrink-0 -space-x-1.5">
+                        <span className="h-5 w-5 rounded-full border border-white shadow-sm" style={{ background: pal.primary }} />
+                        <span className="h-5 w-5 rounded-full border border-white shadow-sm" style={{ background: pal.accent }} />
+                      </span>
+                      <span className="truncate text-xs font-semibold text-slate-700">{pal.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Color Input */}
+              <div className="flex items-center gap-3 pt-2">
+                <span className="text-xs text-slate-500 font-medium">Atau warna utama kustom:</span>
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={(e) => {
+                    setPrimaryColor(e.target.value);
+                    setSelectedPalette("custom");
+                  }}
+                  className="h-8 w-12 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
+                  title="Pilih warna utama kustom"
+                />
+                <span className="font-mono text-xs font-semibold text-slate-700 uppercase">{primaryColor}</span>
+              </div>
+            </div>
+
+            {/* Ringkasan AI Generate */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                <Sparkles size={16} className="text-emerald-600" />
+                <span>Website {form.businessName || "Usaha"} Siap Dibuat dengan AI</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                UsahaKu AI akan menyusun copywriting &amp; layout berdasarkan template <b>{WEBSITE_TEMPLATES.find(t=>t.id===selectedTemplate)?.name}</b> dengan warna <b>{primaryColor}</b>.
+              </p>
+            </div>
+          </div>
         )}
         <FormError msg={err} />
         <div className="wizard-actions">
