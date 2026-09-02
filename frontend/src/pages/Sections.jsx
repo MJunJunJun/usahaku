@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Sparkles, Star, MapPin, Clock, Phone, LayoutTemplate, Trophy,
   MessageSquareQuote, HelpCircle, MapPinned, ChevronDown, Plus, Trash2,
-  Check, EyeOff, Wand2, ShieldCheck, Award, HeartHandshake, Coffee,
+  Check, EyeOff, ShieldCheck, Award, HeartHandshake, Coffee,
   MessageCircle, Flame, Gift, CheckCircle2, Wrench, Calendar, Truck, RefreshCw,
 } from "lucide-react";
 import { api, errorText } from "../lib/api";
@@ -206,7 +206,7 @@ function IconSelect({ value, onChange, disabled }) {
   );
 }
 
-function SectionCard({ icon: Icon, tint, title, subtitle, visible, onToggle, onPreset, presetDisabled, children, testid }) {
+function SectionCard({ icon: Icon, tint, title, subtitle, visible, onToggle, children, testid }) {
   return (
     <section data-testid={testid} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -220,18 +220,6 @@ function SectionCard({ icon: Icon, tint, title, subtitle, visible, onToggle, onP
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {onPreset && (
-            <Select onValueChange={onPreset} value="">
-              <SelectTrigger className="h-9 w-[170px] rounded-lg border-slate-200 bg-white text-xs font-medium" disabled={presetDisabled}>
-                <span className="!flex items-center gap-1.5 text-slate-600"><Wand2 size={13} className="shrink-0 text-emerald-600" /><SelectValue placeholder="Preset template..." /></span>
-              </SelectTrigger>
-              <SelectContent className={contentCls}>
-                {Object.entries(PRESETS).map(([key, p]) => (
-                  <SelectItem key={key} value={key} className={itemCls}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
           <label className="flex cursor-pointer items-center gap-2">
             <span className={`text-xs font-semibold ${visible ? "text-emerald-600" : "text-slate-400"}`}>
               {visible ? "Tampil" : "Disembunyikan"}
@@ -252,20 +240,11 @@ export function SectionForm({ site = {}, cfg, set }) {
   const [openFaq, setOpenFaq] = useState(0);
   const setCard = (key, val) => set({ contactCards: { ...cfg.contactCards, [key]: val } });
 
-  const applyPreset = (section, key) => {
-    const p = PRESETS[key];
-    if (!p) return;
-    if (section === "highlights") set({ highlights: p.highlights.map((x) => ({ ...x })) });
-    if (section === "testimonials") set({ testimonials: p.testimonials.map((x) => ({ ...x })) });
-    if (section === "faq") { set({ faq: p.faq.map((x) => ({ ...x })) }); setOpenFaq(0); }
-    if (section === "contact") set({ businessHours: p.hours });
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800">
         <EyeOff size={16} className="mt-0.5 shrink-0 text-emerald-600" />
-        <span>Section yang dimatikan <b>(OFF)</b> tidak akan muncul di halaman utama website. Gunakan dropdown <b>Preset template</b> untuk mengisi konten secara instan.</span>
+        <span>Section yang dimatikan <b>(OFF)</b> tidak akan muncul di halaman utama website.</span>
       </div>
 
       {/* TEMPLATE & COLOR PALETTE SELECTOR */}
@@ -332,8 +311,7 @@ export function SectionForm({ site = {}, cfg, set }) {
       {/* SECTION 1: KEUNGGULAN */}
       <SectionCard testid="section-highlights" icon={Trophy} tint="bg-amber-50 text-amber-600"
         title="Section 1 · Keunggulan" subtitle="3 kartu berisi ikon, judul, dan deskripsi unggulan usaha"
-        visible={cfg.highlightsVisible} onToggle={(v) => set({ highlightsVisible: v })}
-        onPreset={(k) => applyPreset("highlights", k)} presetDisabled={!cfg.highlightsVisible}>
+        visible={cfg.highlightsVisible} onToggle={(v) => set({ highlightsVisible: v })}>
         <div className="grid gap-4 p-5 sm:grid-cols-3">
           {cfg.highlights.slice(0, 3).map((h, i) => {
             const Preview = ICON_MAP[h.icon] || ShieldCheck;
@@ -370,8 +348,7 @@ export function SectionForm({ site = {}, cfg, set }) {
       {/* SECTION 2: ULASAN PELANGGAN — satu container, item di dalamnya */}
       <SectionCard testid="section-testimonials" icon={MessageSquareQuote} tint="bg-violet-50 text-violet-600"
         title="Section 2 · Ulasan Pelanggan" subtitle={`Kartu rating bintang, kutipan, nama, dan label status · ${cfg.testimonials.length} ulasan`}
-        visible={cfg.testimonialsVisible} onToggle={(v) => set({ testimonialsVisible: v })}
-        onPreset={(k) => applyPreset("testimonials", k)} presetDisabled={!cfg.testimonialsVisible}>
+        visible={cfg.testimonialsVisible} onToggle={(v) => set({ testimonialsVisible: v })}>
         <div className="p-5">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="divide-y divide-slate-100">
@@ -432,8 +409,7 @@ export function SectionForm({ site = {}, cfg, set }) {
       {/* SECTION 3: FAQ — satu container accordion */}
       <SectionCard testid="section-faq" icon={HelpCircle} tint="bg-sky-50 text-sky-600"
         title="Section 3 · FAQ" subtitle={`Accordion pertanyaan umum · ${cfg.faq.length} pertanyaan`}
-        visible={cfg.faqVisible} onToggle={(v) => set({ faqVisible: v })}
-        onPreset={(k) => applyPreset("faq", k)} presetDisabled={!cfg.faqVisible}>
+        visible={cfg.faqVisible} onToggle={(v) => set({ faqVisible: v })}>
         <div className="p-5">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="divide-y divide-slate-100">
@@ -482,8 +458,7 @@ export function SectionForm({ site = {}, cfg, set }) {
       {/* SECTION 4: KONTAK & LOKASI */}
       <SectionCard testid="section-contact" icon={MapPinned} tint="bg-emerald-50 text-emerald-600"
         title="Section 4 · Kontak & Lokasi" subtitle="3 kartu kontak — tiap kartu bisa dinyalakan/dimatikan sendiri"
-        visible={cfg.contactVisible} onToggle={(v) => set({ contactVisible: v })}
-        onPreset={(k) => applyPreset("contact", k)} presetDisabled={!cfg.contactVisible}>
+        visible={cfg.contactVisible} onToggle={(v) => set({ contactVisible: v })}>
         <div className="grid gap-4 p-5 md:grid-cols-3">
           {/* Card 1: Alamat + Maps */}
           <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.address ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 bg-slate-50/60"}`}>
