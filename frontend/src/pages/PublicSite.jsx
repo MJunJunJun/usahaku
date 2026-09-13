@@ -4,13 +4,25 @@ import { ArrowRight, MessageCircle, Info, Wrench, Circle } from "lucide-react";
 import { api } from "../lib/api";
 import { Brand, Loading, Button } from "../lib/shared";
 import PublicWebsiteView from "./PublicWebsiteView";
+import { getShowcaseSite } from "../lib/showcaseData";
+import { APP_NAME } from "../lib/config";
 
 export function PublicRoute() {
   const { slug } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   useEffect(() => {
-    api.get(`/public/${slug}`).then(r => setData(r.data)).catch(() => setError(true));
+    api.get(`/public/${slug}`).then(r => {
+      // Demo selalu memakai copy yang telah dikurasi per kategori, termasuk FAQ dan ulasan.
+      const localShowcase = getShowcaseSite(slug);
+      setData(localShowcase ? { ...r.data, aiGeneratedContent: { ...r.data.aiGeneratedContent, ...localShowcase.aiGeneratedContent } } : r.data);
+    }).catch(() => {
+      const localShowcase = getShowcaseSite(slug);
+      if (!localShowcase) return setError(true);
+      api.get("/settings/public")
+        .then((r) => setData({ ...localShowcase, whatsapp: r.data.adminWhatsapp || localShowcase.whatsapp }))
+        .catch(() => setData(localShowcase));
+    });
   }, [slug]);
   if (error) return <NotFoundPage />;
   if (!data) return <Loading text="Membuka website..." />;
@@ -40,7 +52,7 @@ function MaintenancePage({ slug, businessName }) {
             <Link data-testid="owner-info-link" className="btn btn-primary" to={`/owner-access/${slug}`}>Informasi untuk Pemilik <ArrowRight size={15} /></Link>
           </div>
         </div>
-        <a data-testid="maintenance-home" className="text-link" href="/">Kembali ke UsahaKu →</a>
+        <a data-testid="maintenance-home" className="text-link" href="/">Kembali ke {APP_NAME} →</a>
       </main>
     </div>
   );
@@ -57,7 +69,7 @@ function NotFoundPage() {
           <h1>Website tidak ditemukan.</h1>
           <p>Tautan mungkin salah atau website belum dipublikasikan.</p>
         </div>
-        <Link className="text-link" to="/">Kembali ke UsahaKu →</Link>
+        <Link className="text-link" to="/">Kembali ke {APP_NAME} →</Link>
       </main>
     </div>
   );
@@ -86,9 +98,9 @@ export function OwnerAccess() {
           <div className="maintenance-card">
             <div className="eyebrow">INFORMASI PEMILIK</div>
             <h1>Apakah Anda pemilik website ini?</h1>
-            <p>Masuk ke akun UsahaKu yang digunakan untuk mengelola website ini agar dapat melihat status dan mengaktifkannya kembali.</p>
+            <p>Masuk ke akun {APP_NAME} yang digunakan untuk mengelola website ini agar dapat melihat status dan mengaktifkannya kembali.</p>
             <div className="maintenance-actions">
-              <Button data-testid="owner-login-button" onClick={() => nav("/login")}>Masuk ke UsahaKu <ArrowRight size={15} /></Button>
+              <Button data-testid="owner-login-button" onClick={() => nav("/login")}>Masuk ke {APP_NAME} <ArrowRight size={15} /></Button>
               <Link data-testid="owner-register-link" className="text-link" to="/register">Belum punya akun? Daftar</Link>
             </div>
           </div>
@@ -116,7 +128,7 @@ export function OwnerAccess() {
   if (!data) return <Loading text="Memverifikasi kepemilikan..." />;
 
   const status = data.owner?.subscriptionStatus;
-  const statusLabel = { TRIAL_ACTIVE: "Trial gratis aktif", TRIAL_EXPIRED: "Trial gratis berakhir", ACTIVE: "Berlangganan aktif", EXPIRED: "Berlangganan berakhir" }[status] || status;
+  const statusLabel = { TRIAL_ACTIVE: "Paket Gratis", TRIAL_EXPIRED: "Paket Gratis tidak aktif", ACTIVE: "Berlangganan aktif", EXPIRED: "Berlangganan berakhir" }[status] || status;
 
   return (
     <div className="maintenance-page">
@@ -125,12 +137,12 @@ export function OwnerAccess() {
         <div className="maintenance-card wide">
           <div className="eyebrow">STATUS WEBSITE</div>
           <h1>Website Anda sedang tidak aktif.</h1>
-          <p>{data.website.businessName} sedang dalam pemeliharaan karena {status === "TRIAL_EXPIRED" ? "trial gratis 30 hari telah berakhir" : "berlangganan telah berakhir"}. Aktifkan kembali untuk kembali online.</p>
+          <p>{data.website.businessName} sedang dalam pemeliharaan karena {status === "TRIAL_EXPIRED" ? "paket gratis tidak aktif" : "berlangganan telah berakhir"}. Aktifkan kembali untuk kembali online.</p>
           <div className="owner-status">
             <div><small>NAMA BISNIS</small><b>{data.website.businessName}</b></div>
             <div><small>URL PUBLIK</small><b>/site/{data.website.slug}</b></div>
             <div><small>STATUS</small><b>{statusLabel}</b></div>
-            <div><small>PAKET</small><b>{data.owner.planSlug || "Trial"}</b></div>
+            <div><small>PAKET</small><b>{data.owner.planSlug === "trial" ? "Gratis" : (data.owner.planSlug || "Gratis")}</b></div>
           </div>
           <div className="maintenance-actions">
             <Button data-testid="owner-choose-plan" onClick={() => nav("/dashboard/subscription")}>Aktifkan kembali · Pilih paket <ArrowRight size={15} /></Button>

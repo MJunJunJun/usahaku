@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, AlertCircle, CheckCircle, Loader2, Eye, EyeOff } from "lucide-react";
 import { api, errorText } from "../lib/api";
 import { Brand, Button, FormError } from "../lib/shared";
+import { APP_NAME } from "../lib/config";
 import "./Auth.css";
 
 function AuthSide() {
@@ -104,7 +105,7 @@ export function AuthPage({ register = false }) {
         <Link data-testid="auth-back-home" className="back-link" to="/">← Kembali ke beranda</Link>
         <div className="auth-form">
           <div className="eyebrow">{register ? "MULAI GRATIS" : "SELAMAT DATANG KEMBALI"}</div>
-          <h2>{register ? "Buat website pertamamu." : "Masuk ke UsahaKu."}</h2>
+          <h2>{register ? "Buat website pertamamu." : `Masuk ke ${APP_NAME}.`}</h2>
           <p>{register ? "Ayo mulai buat website usahamu." : "Kelola semua website usahamu dari satu tempat."}</p>
           
           <form onSubmit={handleSubmit}>

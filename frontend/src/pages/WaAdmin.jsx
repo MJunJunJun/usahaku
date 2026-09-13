@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Bot, BookUser, CheckCircle2, Download, Loader, LogOut, MessageCircle, MessageSquare, Pencil, Plus, QrCode, Radio, RefreshCw, Search, Send, Trash2, User, X, XCircle } from "lucide-react";
 import { api, errorText, formatDateTime } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
+import { APP_NAME } from "../lib/config";
 
 const hhmm = (iso) => {
   try {
@@ -140,11 +141,6 @@ export function WaCenter() {
     await api.post("/admin/wa/logout"); setQr(null); loadAll();
   };
 
-  const toggleGlobalAuto = async () => {
-    await api.put("/admin/wa/config", { globalAuto: !(st?.config?.globalAuto) });
-    loadAll();
-  };
-
   const sendBroadcast = async () => {
     setBusy(true); setErr(""); setMsg("");
     try {
@@ -190,7 +186,7 @@ export function WaCenter() {
             <span className={`wa-dot ${st.connected ? "ok" : st.gowaReachable ? "wait" : "bad"}`} />
             <div>
               <b>{st.connected ? "Terhubung ke WhatsApp" : st.gowaReachable ? "Gateway jalan — belum scan QR" : "Gateway WhatsApp tidak terjangkau"}</b>
-              <span>{st.connected ? "Pesan masuk & notifikasi aktif." : st.gowaReachable ? "Klik Tampilkan QR lalu scan dari aplikasi WhatsApp." : "Jalankan: docker compose up -d"}</span>
+              <span>{st.connected ? "Siap untuk pengiriman manual dan broadcast." : st.gowaReachable ? "Klik Tampilkan QR lalu scan dari aplikasi WhatsApp." : "Jalankan: docker compose up -d"}</span>
             </div>
           </div>
           <div className="wa-status-actions">
@@ -202,13 +198,10 @@ export function WaCenter() {
             {st.connected && (
               <Button variant="outline" onClick={doLogoutWa}><LogOut size={15} /> Logout device</Button>
             )}
-            <Button variant={st.config.globalAuto ? "primary" : "outline"} onClick={toggleGlobalAuto}>
-              <Bot size={15} /> Auto-reply global: {st.config.globalAuto ? "ON" : "OFF"}
-            </Button>
           </div>
         </div>
         <div className="wa-mini-stats">
-          <span><b>{st.totalUnread}</b> chat belum dibaca</span>
+          <span>Balasan pelanggan dilayani manual dari aplikasi WhatsApp admin.</span>
           <span><b>{st.failedCount}</b> pengiriman gagal</span>
         </div>
         {err && <FormError msg={err} />}
@@ -497,7 +490,6 @@ export function WaInbox() {
 
 /* ================= HALAMAN KONTAK WA ================= */
 export function WaContacts() {
-  const navigate = useNavigate();
   const [contacts, setContacts] = useState(null);
   const [cats, setCats] = useState([]);
   const [q, setQ] = useState("");
@@ -511,6 +503,10 @@ export function WaContacts() {
   const [edit, setEdit] = useState(null); // kontak yang sedang diedit
   const [editForm, setEditForm] = useState({ name: "", websiteName: "", categories: [], notes: "" });
   const [addForm, setAddForm] = useState({ phone: "", name: "", websiteName: "", categories: [] });
+  const [sendContact, setSendContact] = useState(null);
+  const [sendText, setSendText] = useState("");
+  const [messageTemplates, setMessageTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const togglePanel = (name) => { setMsg(""); setErr(""); setPanel(p => (p === name ? null : name)); };
 
   const loadAll = () => {
@@ -519,6 +515,7 @@ export function WaContacts() {
     if (catFilter !== "ALL") params.category = catFilter;
     api.get("/admin/wa/contacts", { params }).then(r => setContacts(r.data)).catch(() => {});
     api.get("/admin/wa/contacts/categories").then(r => setCats(r.data)).catch(() => {});
+    api.get("/admin/settings").then(r => setMessageTemplates(r.data.waMessageTemplates || [])).catch(() => {});
   };
   useEffect(() => { loadAll(); }, []);
   useEffect(() => { const t = setTimeout(loadAll, 350); return () => clearTimeout(t); }, [q, catFilter]);
@@ -579,6 +576,17 @@ export function WaContacts() {
     finally { setBusy(false); }
   };
 
+  const sendManualMessage = async () => {
+    if (!sendContact || !sendText.trim()) return;
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      await api.post(`/admin/wa/contacts/${sendContact.id}/send`, { text: sendText.trim() });
+      setMsg(`Pesan berhasil dikirim ke +${sendContact.phone}. Lanjutkan percakapan melalui aplikasi WhatsApp admin.`);
+      setSendContact(null); setSendText(""); setSelectedTemplateId("");
+    } catch (e) { setErr(errorText(e)); }
+    finally { setBusy(false); }
+  };
+
   if (!contacts) return <Loading text="Memuat kontak WA..." />;
 
   return (
@@ -587,7 +595,7 @@ export function WaContacts() {
         <div>
           <div className="eyebrow">WHATSAPP</div>
           <h1>Kontak WA</h1>
-          <p>Buku nomor otomatis: chat masuk & pesanan tercatat sendiri. Nama, web, dan kategori bisa dilengkapi.</p>
+          <p>Kelola buku nomor dan kirim satu pesan manual. Percakapan selanjutnya dilayani dari aplikasi WhatsApp admin.</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <Button variant="outline" data-testid="wa-import-toggle" onClick={() => togglePanel("import")}><Download size={15} /> Impor nomor</Button>
@@ -597,6 +605,35 @@ export function WaContacts() {
 
       {msg && <div className="form-info">{msg}</div>}
       <FormError msg={err} />
+
+      {sendContact && (
+        <div className="wizard-card" data-testid="wa-manual-send-card">
+          <div className="eyebrow">KIRIM PESAN MANUAL</div>
+          <h2>Kirim ke {sendContact.name || `+${sendContact.phone}`}</h2>
+          <p className="form-intro">Pesan dikirim satu kali melalui gateway. Setelah itu, lanjutkan layanan pelanggan dari aplikasi WhatsApp admin.</p>
+          <div className="wa-manual-composer">
+            <label className="wa-manual-message-field">Pesan
+              <textarea data-testid="wa-manual-send-message" value={sendText} onChange={e => setSendText(e.target.value)} placeholder="Tulis pesan untuk pelanggan..." />
+            </label>
+            <label className="wa-manual-template-field">Gunakan template (opsional)
+              <select data-testid="wa-manual-send-template" value={selectedTemplateId} onChange={e => {
+                const id = e.target.value;
+                setSelectedTemplateId(id);
+                const template = messageTemplates.find(t => t.id === id);
+                if (template) setSendText(template.body || "");
+              }}>
+                <option value="">Tulis pesan manual</option>
+                {messageTemplates.map(template => <option key={template.id} value={template.id}>{template.title}</option>)}
+              </select>
+              <small>Memilih template akan mengisi area pesan, lalu isi tetap dapat diedit.</small>
+            </label>
+          </div>
+          <div className="wizard-actions">
+            <Button variant="outline" onClick={() => { setSendContact(null); setSendText(""); setSelectedTemplateId(""); }}>Batal</Button>
+            <Button data-testid="wa-manual-send-submit" onClick={sendManualMessage} disabled={busy || !sendText.trim()}><Send size={15} />{busy ? "Mengirim..." : "Kirim pesan"}</Button>
+          </div>
+        </div>
+      )}
 
       {/* Impor massal (untuk hasil scraping grup) — muncul sendirian */}
       {panel === "import" && (
@@ -665,7 +702,7 @@ export function WaContacts() {
               </>
             ) : (
               <>
-                <span><b>+{c.phone}</b>{c.userId && <small title="Terhubung ke akun user UsahaKu"> � user terdaftar</small>}</span>
+                <span><b>+{c.phone}</b>{c.userId && <small title={`Terhubung ke akun user ${APP_NAME}`}> · user terdaftar</small>}</span>
                 <span>{c.name || "-"}</span>
                 <span>{c.websiteId
                   ? <b className="wa-web-link">{c.websiteName || "website"}</b>
@@ -675,7 +712,7 @@ export function WaContacts() {
                 </span>
                 <span><StatusBadge status={c.source === "inbox" ? "PENDING" : c.source === "order" ? "APPROVED" : "DRAFT"} /></span>
                 <span className="coupon-actions">
-                  <button className="icon-button" title="Chat" onClick={() => navigate("/admin/wa-chat?chat=" + encodeURIComponent(c.id))} style={{color:"#25D366"}}><MessageCircle size={14} /></button>
+                  <button className="icon-button" title="Kirim pesan manual" data-testid={`wa-contact-send-${c.phone}`} onClick={() => { setSendContact(c); setSendText(""); setSelectedTemplateId(""); }} style={{color:"#25D366"}}><Send size={14} /></button>
                   <button className="icon-button" title="Edit" onClick={() => startEdit(c)}><Pencil size={14} /></button>
                   <button className="icon-button danger" title="Hapus" onClick={() => removeContact(c)}><Trash2 size={14} /></button>
                 </span>

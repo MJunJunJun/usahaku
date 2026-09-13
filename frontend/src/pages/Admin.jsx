@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Search, Check, X, Users, CreditCard, Store, ClipboardList, Sparkles, Plus, Trash2 } from "lucide-react";
-import { api, errorText, money, formatDate, formatDateTime } from "../lib/api";
+import { api, errorText, money, formatDate, formatDateTime, resolveMediaUrl } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
+import { APP_NAME } from "../lib/config";
 
 const AdminHead = ({ eyebrow, title, subtitle, extra }) => (
   <div className="page-head">
@@ -21,7 +22,7 @@ export function AdminOverview() {
   if (!data) return <Loading text="Memuat overview..." />;
   return (
     <div className="dashboard">
-      <AdminHead eyebrow="ADMIN OVERVIEW" title="Kontrol platform UsahaKu" subtitle="Ringkasan pengguna, website, dan pembayaran." />
+      <AdminHead eyebrow="ADMIN OVERVIEW" title={`Kontrol platform ${APP_NAME}`} subtitle="Ringkasan pengguna, website, dan pembayaran." />
       {data.pendingPayments > 0 && (
         <div className="trial-banner warning">
           <div className="trial-icon"><Sparkles size={19} /></div>
@@ -32,9 +33,9 @@ export function AdminOverview() {
       <div className="stat-grid">
         <AdminStat label="Total pengguna" value={data.totalUsers} icon={<Users size={16} />} />
         <AdminStat label="Pengguna aktif" value={data.activeUsers} icon="●" />
-        <AdminStat label="Trial aktif" value={data.trialUsers} icon="◆" />
+        <AdminStat label="Paket Gratis aktif" value={data.trialUsers} icon="◆" />
         <AdminStat label="Premium aktif" value={data.premiumUsers} icon={<CreditCard size={16} />} />
-        <AdminStat label="Trial berakhir" value={data.trialExpired} icon="○" />
+        <AdminStat label="Paket Gratis tidak aktif" value={data.trialExpired} icon="○" />
         <AdminStat label="Berlangganan berakhir" value={data.expiredUsers} icon="◌" />
         <AdminStat label="Total website" value={data.totalWebsites} icon={<Store size={16} />} />
         <AdminStat label="Website published" value={data.publishedWebsites} icon="↗" />
@@ -78,7 +79,7 @@ export function AdminUsers() {
         <div className="search-box"><Search size={16} /><input data-testid="user-search" placeholder="Cari nama atau email" value={q} onChange={e => setQ(e.target.value)} /></div>
         <select data-testid="user-filter" value={filter} onChange={e => setFilter(e.target.value)}>
           <option value="ALL">Semua</option>
-          <option value="TRIAL">Trial</option>
+          <option value="TRIAL">Paket Gratis</option>
           <option value="ACTIVE">Berlangganan aktif</option>
           <option value="EXPIRED">Berakhir</option>
           <option value="SUSPENDED">Ditangguhkan</option>
@@ -90,7 +91,7 @@ export function AdminUsers() {
           <div data-testid={`user-row-${u.id}`} className="admin-tr" key={u.id}>
             <span><b>{u.name}</b><small>{formatDate(u.createdAt)}</small></span>
             <span>{u.email}</span>
-            <span>{u.planSlug || "trial"}</span>
+            <span>{u.planSlug === "trial" ? "Gratis" : (u.planSlug || "Gratis")}</span>
             <span>{u.websiteCount} / {u.websiteQuota || 1}</span>
             <span>
               <div>
@@ -100,7 +101,7 @@ export function AdminUsers() {
                 </button>
               </div>
             </span>
-            <span>{formatDate(u.subscriptionStatus === "TRIAL_ACTIVE" ? u.trialEndDate : u.subscriptionExpiryDate)}</span>
+            <span>{u.subscriptionStatus === "TRIAL_ACTIVE" ? "-" : formatDate(u.subscriptionExpiryDate)}</span>
             <Link data-testid={`user-detail-${u.id}`} className="text-link" to={`/admin/users/${u.id}`}>Detail →</Link>
           </div>
         ))}
@@ -143,12 +144,11 @@ export function AdminUserDetail() {
           <div className="eyebrow">INFO AKUN</div>
           <div className="info-rows">
             <div><small>NOMOR TELEPON</small><b>{u.whatsapp || u.phone || "-"}</b></div>
-            <div><small>PAKET</small><b>{u.planSlug || "trial"}</b></div>
+            <div><small>PAKET</small><b>{u.planSlug === "trial" ? "Gratis" : (u.planSlug || "Gratis")}</b></div>
             <div><small>KUOTA WEBSITE</small><b>{u.websiteQuota || 1}</b></div>
             <div><small>WEBSITE TAMBAHAN</small><b>{u.additionalWebsiteQuota || 0}</b></div>
             <div><small>STATUS AKUN</small><b>{u.accountStatus}</b></div>
             <div><small>STATUS BERLANGGANAN</small><b>{u.subscriptionStatus}</b></div>
-            <div><small>TRIAL BERAKHIR</small><b>{formatDate(u.trialEndDate)}</b></div>
             <div><small>SUB BERAKHIR</small><b>{formatDate(u.subscriptionExpiryDate)}</b></div>
             <div><small>DAFTAR</small><b>{formatDate(u.createdAt)}</b></div>
           </div>
@@ -262,7 +262,7 @@ export function AdminPaymentDetail() {
   const load = () => api.get(`/admin/payments/${id}`).then(r => setP(r.data));
   useEffect(() => { load(); }, [id]);
   if (!p) return <Loading text="Memuat detail pembayaran..." />;
-  const proofUrl = p.proofUrl ? (p.proofUrl.startsWith("http") ? p.proofUrl : process.env.REACT_APP_BACKEND_URL + p.proofUrl) : "";
+  const proofUrl = resolveMediaUrl(p.proofUrl);
   const approve = async () => {
     if (!window.confirm(`Setujui pembayaran ${p.planName} sebesar Rp${money(p.amount)}?`)) return;
     setBusy(true); setErr("");
@@ -457,10 +457,14 @@ export function AdminSettings() {
   useEffect(() => { api.get("/admin/settings").then(r => setS(r.data)); }, []);
   if (!s) return <Loading text="Memuat pengaturan..." />;
   const set = (k, v) => setS({ ...s, [k]: v });
+  const messageTemplates = s.waMessageTemplates || [];
+  const addMessageTemplate = () => set("waMessageTemplates", [...messageTemplates, { id: `tpl-${Date.now()}`, title: "", body: "" }]);
+  const updateMessageTemplate = (id, field, value) => set("waMessageTemplates", messageTemplates.map(t => t.id === id ? { ...t, [field]: value } : t));
+  const removeMessageTemplate = (id) => set("waMessageTemplates", messageTemplates.filter(t => t.id !== id));
   const save = async () => {
     setSaving(true); setMsg(""); setErr("");
     try {
-      const payload = { applicationName: s.applicationName, supportEmail: s.supportEmail, adminWhatsapp: s.adminWhatsapp, bankName: s.bankName, accountName: s.accountName, accountNumber: s.accountNumber, paymentInstructions: s.paymentInstructions, additionalWebsitePrice: Number(s.additionalWebsitePrice) };
+      const payload = { applicationName: s.applicationName, supportEmail: s.supportEmail, adminWhatsapp: s.adminWhatsapp, bankName: s.bankName, accountName: s.accountName, accountNumber: s.accountNumber, paymentInstructions: s.paymentInstructions, additionalWebsitePrice: Number(s.additionalWebsitePrice), waMessageTemplates: messageTemplates.filter(t => t.title.trim() && t.body.trim()) };
       await api.put("/admin/settings", payload);
       setMsg("Pengaturan berhasil disimpan.");
     } catch (e) { setErr(errorText(e)); }
@@ -475,6 +479,19 @@ export function AdminSettings() {
           <label>Nama aplikasi<input data-testid="settings-app-name" value={s.applicationName || ""} onChange={e => set("applicationName", e.target.value)} /></label>
           <label>Email support<input data-testid="settings-support-email" value={s.supportEmail || ""} onChange={e => set("supportEmail", e.target.value)} /></label>
           <label>WhatsApp admin<input data-testid="settings-admin-whatsapp" value={s.adminWhatsapp || ""} onChange={e => set("adminWhatsapp", e.target.value)} placeholder="628123456789" /></label>
+        </div>
+        <div className="eyebrow" style={{ marginTop: 32 }}>TEMPLATE PESAN WHATSAPP</div>
+        <p className="form-intro">Template ini dapat dipilih saat mengirim pesan manual ke satu kontak.</p>
+        <div className="wa-template-settings">
+          {messageTemplates.map((template, index) => (
+            <div className="wa-template-settings-row" key={template.id || index}>
+              <label>Judul template<input data-testid={`settings-wa-template-title-${index}`} value={template.title || ""} onChange={e => updateMessageTemplate(template.id, "title", e.target.value)} placeholder="Contoh: Penawaran awal" /></label>
+              <label>Isi pesan<textarea data-testid={`settings-wa-template-body-${index}`} value={template.body || ""} onChange={e => updateMessageTemplate(template.id, "body", e.target.value)} placeholder="Tulis isi pesan..." /></label>
+              <button className="icon-button danger" type="button" title="Hapus template" onClick={() => removeMessageTemplate(template.id)}><Trash2 size={16} /></button>
+            </div>
+          ))}
+          {messageTemplates.length === 0 && <div className="empty-inline">Belum ada template pesan.</div>}
+          <Button type="button" variant="outline" data-testid="settings-wa-template-add" onClick={addMessageTemplate}><Plus size={15} /> Tambah template</Button>
         </div>
         <div className="eyebrow" style={{ marginTop: 32 }}>PEMBAYARAN</div>
         <div className="form-grid">

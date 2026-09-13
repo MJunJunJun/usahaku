@@ -17,11 +17,16 @@ db = mongo[backend_env["DB_NAME"]]
 
 # ---------- module: auth ----------
 class TestAuth:
-    def test_register_assigns_30_day_trial(self):
+    def test_register_defers_30_day_trial_until_first_website(self):
         s, user, email = new_user()
-        assert user["subscriptionStatus"] == "TRIAL_ACTIVE"
+        assert user["subscriptionStatus"] == "TRIAL_PENDING"
         assert user["websiteQuota"] == 1
-        end = datetime.fromisoformat(user["trialEndDate"])
+        assert not user["trialStartDate"] and not user["trialEndDate"]
+        created = s.post(f"{API}/websites", json={"businessName": "TEST Mulai Trial"})
+        assert created.status_code == 200
+        started = s.get(f"{API}/auth/me").json()
+        assert started["subscriptionStatus"] == "TRIAL_ACTIVE"
+        end = datetime.fromisoformat(started["trialEndDate"])
         delta = end - datetime.now(timezone.utc)
         assert 29 <= delta.days <= 30, delta
         assert "password_hash" not in user

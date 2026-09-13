@@ -2,6 +2,15 @@
 const path = require("path");
 require("dotenv").config();
 
+// Beberapa launcher Windows mewariskan variabel jaringan sebagai string kosong.
+// CRA menganggap nilai kosong sebagai konfigurasi eksplisit dan dev server gagal
+// membuat allowedHosts. Hapus nilai kosong agar default yang aman dipakai.
+["HOST", "PORT", "HTTPS", "WDS_SOCKET_HOST", "WDS_SOCKET_PORT", "WDS_SOCKET_PATH"].forEach((name) => {
+  if (typeof process.env[name] === "string" && !process.env[name].trim()) {
+    delete process.env[name];
+  }
+});
+
 // Check if we're in development/preview mode (not production build)
 // Craco sets NODE_ENV=development for start, NODE_ENV=production for build
 const isDevServer = process.env.NODE_ENV !== "production";
@@ -31,6 +40,14 @@ function makeDevServerV5Compatible(devServerConfig) {
     ...compatibleConfig.headers,
     "Cross-Origin-Resource-Policy": "same-origin",
   };
+  if (Array.isArray(compatibleConfig.allowedHosts)) {
+    compatibleConfig.allowedHosts = compatibleConfig.allowedHosts.filter(
+      (host) => typeof host === "string" && host.trim()
+    );
+    if (!compatibleConfig.allowedHosts.length) {
+      compatibleConfig.allowedHosts = ["localhost", "127.0.0.1"];
+    }
+  }
 
   if (onBeforeSetupMiddleware || setupMiddlewares) {
     compatibleConfig.setupMiddlewares = (middlewares, devServer) => {

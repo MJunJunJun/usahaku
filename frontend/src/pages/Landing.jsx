@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, ChevronRight, Menu, X, Sparkles } from "lucide-react";
 import { Brand } from "../lib/shared";
+import { APP_NAME, PUBLIC_SITE_HOST } from "../lib/config";
 import "./Landing.css";
 
 function PublicNav() {
@@ -37,17 +38,17 @@ const Price = ({ name, price, desc, items, featured, testid }) => (
   </div>
 );
 
-const Example = ({ title, category, color, testid }) => (
-  <div data-testid={testid} className="example-card" style={{ background: color }}>
+const Example = ({ title, category, color, slug, testid }) => (
+  <Link data-testid={testid} className="example-card" to={`/site/${slug}`} style={{ background: color }}>
     <div className="example-header">
       <b>{title}</b>
-      <span>usahaku.id/{title.toLowerCase().replaceAll(" ", "-")}</span>
+      <span>{PUBLIC_SITE_HOST}/site/{slug}</span>
     </div>
     <div className="example-body">
       <small>{category.toUpperCase()}</small>
       <h4>Cerita usahamu, tampak profesional.</h4>
     </div>
-  </div>
+  </Link>
 );
 
 export default function Landing() {
@@ -66,12 +67,12 @@ export default function Landing() {
             </div>
             <div className="trust-row">
               <div className="avatar-stack"><span>R</span><span>D</span><span>A</span></div>
-              <span>Dipercaya pemilik usaha lokal · Trial 30 hari</span>
+              <span>Dipercaya pemilik usaha lokal</span>
             </div>
           </div>
           <div className="hero-visual reveal delay-1">
             <div className="browser">
-              <div className="browser-bar"><span /><span /><span /><small>preview.usahaku.id/kopi-senja</small></div>
+              <div className="browser-bar"><span /><span /><span /><small>{PUBLIC_SITE_HOST}/site/demo-kopi-senja</small></div>
               <div className="site-preview">
                 <div className="site-nav"><b>kopi<span>senja</span></b><span>Menu &nbsp; Tentang &nbsp; Lokasi</span><strong>Pesan sekarang</strong></div>
                 <div className="site-hero">
@@ -119,7 +120,7 @@ export default function Landing() {
         <section id="cara-kerja" className="section container">
           <div className="section-heading">
             <div><div className="eyebrow">CARA YANG LEBIH MUDAH</div><h2>Dari usaha lokal,<br /><span>terlihat profesional.</span></h2></div>
-            <p>UsahaKu membantu kamu hadir di dunia digital dalam beberapa langkah sederhana.</p>
+            <p>{APP_NAME} membantu kamu hadir di dunia digital dalam beberapa langkah sederhana.</p>
           </div>
           <div className="steps">
             <Step n="01" title="Isi informasi usaha" text="Ceritakan nama, kategori, lokasi, dan kontak bisnismu." />
@@ -152,22 +153,22 @@ export default function Landing() {
             <p>AI menyesuaikan gaya visual sesuai karakter bisnismu.</p>
           </div>
           <div className="example-grid">
-            <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" color="linear-gradient(135deg,#14532d,#166534)" />
-            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" color="linear-gradient(135deg,#166534,#15803d)" />
-            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" color="linear-gradient(135deg,#15803d,#16a34a)" />
-            <Example testid="example-barber" title="Barber Co" category="Barbershop" color="linear-gradient(135deg,#166534,#22c55e)" />
-            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" color="linear-gradient(135deg,#14532d,#22c55e)" />
-            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" color="linear-gradient(135deg,#166534,#4ade80)" />
+            <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" slug="demo-kopi-senja" color="linear-gradient(135deg,#14532d,#166534)" />
+            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" slug="demo-rumah-roti" color="linear-gradient(135deg,#166534,#15803d)" />
+            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" slug="demo-nusa-craft" color="linear-gradient(135deg,#15803d,#16a34a)" />
+            <Example testid="example-barber" title="Barber Co" category="Barbershop" slug="demo-barber-co" color="linear-gradient(135deg,#166534,#22c55e)" />
+            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" slug="demo-sari-beauty" color="linear-gradient(135deg,#14532d,#22c55e)" />
+            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" slug="demo-warung-sundari" color="linear-gradient(135deg,#166534,#4ade80)" />
           </div>
         </section>
 
         <section id="harga" className="pricing container">
           <div className="section-heading">
             <div><div className="eyebrow">PILIH SESUAI KEBUTUHAN</div><h2>Mulai gratis,<br /><span>tumbuh bersama.</span></h2></div>
-            <p>Uji coba dulu 30 hari. Saat siap, pilih paket yang mendukung langkah berikutnya.</p>
+            <p>Mulai dengan fitur dasar, lalu pilih paket yang mendukung langkah berikutnya.</p>
           </div>
           <div className="pricing-grid">
-            <Price testid="price-trial-button" name="Trial Gratis" price="Rp0" desc="30 hari pertama" items={["1 website", "AI generation & editing", "Katalog produk", "WhatsApp & Google Maps"]} />
+            <Price testid="price-trial-button" name="Gratis" price="Rp0" desc="untuk memulai" items={["1 website", "AI generation & editing", "Katalog produk", "WhatsApp & Google Maps"]} />
             <Price testid="price-basic-button" name="Basic" price="Rp50.000" desc="per bulan" items={["1 website", "Semua fitur AI", "Katalog tanpa batas", "Dukungan prioritas"]} />
             <Price testid="price-premium-button" featured name="Premium" price="Rp100.000" desc="per bulan" items={["3 website", "Semua fitur AI", "Katalog tanpa batas", "Dukungan prioritas"]} />
             <Price testid="price-platinum-button" name="Platinum" price="Rp100.000" desc="per bulan · fleksibel" items={["3 website + bisa ditambah", "+Rp25.000 per website tambahan", "Semua fitur AI", "Dukungan prioritas"]} />
@@ -187,7 +188,7 @@ export default function Landing() {
       <footer>
         <div className="container">
           <Brand />
-          <span>© 2026 UsahaKu. Untuk usaha yang terus bertumbuh.</span>
+          <span>© 2026 {APP_NAME}. Untuk usaha yang terus bertumbuh.</span>
         </div>
       </footer>
     </div>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Check, Sparkles, Upload, MessageCircle } from "lucide-react";
-import { api, errorText, uploadFile, money, formatDate } from "../lib/api";
+import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
+import { APP_NAME } from "../lib/config";
 
 export function Subscription() {
   const nav = useNavigate();
@@ -25,7 +26,7 @@ export function Subscription() {
   const total = sel ? sel.monthlyPrice + (canAddExtra ? additional : 0) * (settings.additionalWebsitePrice || 25000) : 0;
   const pending = payments.find(p => p.status === "PENDING");
 
-  const planLabel = (slug) => ({ trial: "Trial Gratis", basic: "Basic", premium: "Premium", platinum: "Platinum" })[slug] || "Trial";
+  const planLabel = (slug) => ({ trial: "Gratis", basic: "Basic", premium: "Premium", platinum: "Platinum" })[slug] || "Gratis";
 
   return (
     <div className="subscription-page">
@@ -43,9 +44,9 @@ export function Subscription() {
           <b>{planLabel(user.planSlug)}</b>
           <span>
             Kuota {user.websiteQuota || 1} website
-            {(user.subscriptionStatus === "TRIAL_ACTIVE" && user.trialEndDate) && ` · Trial berakhir ${formatDate(user.trialEndDate)}`}
+            {user.subscriptionStatus === "TRIAL_PENDING" && " · Buat 1 website gratis"}
+            {user.subscriptionStatus === "TRIAL_ACTIVE" && user.trialEndDate && ` · Gratis berakhir ${formatDate(user.trialEndDate)}`}
             {(user.subscriptionStatus === "ACTIVE" && user.subscriptionExpiryDate) && ` · Berakhir ${formatDate(user.subscriptionExpiryDate)}`}
-            {user.subscriptionStatus === "TRIAL_EXPIRED" && ` · Trial berakhir ${formatDate(user.trialEndDate)}`}
             {user.subscriptionStatus === "EXPIRED" && ` · Berakhir ${formatDate(user.subscriptionExpiryDate)}`}
           </span>
         </div>
@@ -56,7 +57,7 @@ export function Subscription() {
         <div className="pending-payment-card expired-cta" data-testid="expired-cta-banner">
           <Sparkles size={20} />
           <div>
-            <b>Masa {user.subscriptionStatus === "TRIAL_EXPIRED" ? "trial gratis" : "langganan"} kamu sudah berakhir.</b>
+            <b>{user.subscriptionStatus === "TRIAL_EXPIRED" ? "Paket Gratis kamu sudah tidak aktif." : "Masa langganan kamu sudah berakhir."}</b>
             <span>Website bisnismu sementara tidak tampil ke pengunjung. Pilih salah satu paket di bawah untuk mengaktifkan kembali — pembayaran bisa dilakukan langsung lewat halaman ini.</span>
           </div>
         </div>
@@ -210,8 +211,8 @@ export function PaymentFlow() {
 
   const wa = () => {
     const msg = finalAmount === 0
-      ? `Halo Admin UsahaKu, saya mengaktifkan paket ${plan.name} (gratis). Email akun saya: ${user.email}. Mohon aktivasi paket saya.`
-      : `Halo Admin UsahaKu, saya sudah melakukan pembayaran paket ${plan.name} sebesar Rp${money(finalAmount)}. Email akun saya: ${user.email}. Saya akan mengirimkan bukti transfer.`;
+      ? `Halo Admin ${APP_NAME}, saya mengaktifkan paket ${plan.name} (gratis). Email akun saya: ${user.email}. Mohon aktivasi paket saya.`
+      : `Halo Admin ${APP_NAME}, saya sudah melakukan pembayaran paket ${plan.name} sebesar Rp${money(finalAmount)}. Email akun saya: ${user.email}. Saya akan mengirimkan bukti transfer.`;
     const num = (settings.adminWhatsapp || "").replace(/\D/g, "");
     return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
   };
@@ -335,7 +336,7 @@ export function PaymentDetail() {
     Promise.all([api.get(`/payments/${pid}`), api.get("/settings/public")]).then(([r, s]) => { setP(r.data); setSettings(s.data); });
   }, [pid]);
   if (!p || !settings) return <Loading text="Memuat pembayaran..." />;
-  const proofUrl = p.proofUrl ? (p.proofUrl.startsWith("http") ? p.proofUrl : process.env.REACT_APP_BACKEND_URL + p.proofUrl) : "";
+  const proofUrl = resolveMediaUrl(p.proofUrl);
   return (
     <div className="dashboard">
       <div className="page-head compact">

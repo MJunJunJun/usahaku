@@ -5,12 +5,13 @@ import {
   MessageSquareQuote, HelpCircle, MapPinned, ChevronDown, Plus, Trash2,
   Check, EyeOff, ShieldCheck, Award, HeartHandshake, Coffee,
   MessageCircle, Flame, Gift, CheckCircle2, Wrench, Calendar, Truck, RefreshCw,
+  PanelsTopLeft,
 } from "lucide-react";
 import { api, errorText } from "../lib/api";
 import { Button, FormError, Loading } from "../lib/shared";
 import { Switch } from "../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
+import { coverPatchFromTemplate, getContentTemplates } from "../lib/contentTemplates";
 
 const ICON_MAP = {
   ShieldCheck, Sparkles, Award, HeartHandshake, Coffee, MessageCircle, Flame,
@@ -150,14 +151,86 @@ const PRESETS = {
   },
 };
 
+// Setiap kategori memperoleh 10 contoh yang dapat langsung diterapkan pada
+// section. Setelah dipilih, data menjadi data biasa di form dan bebas diedit.
+const SECTION_TEMPLATE_OPTIONS = [
+  ["quality", "Kualitas & kepercayaan"],
+  ["service", "Layanan cepat & ramah"],
+  ["value", "Harga & nilai terbaik"],
+  ["local", "Lokal & dekat pelanggan"],
+  ["premium", "Premium & eksklusif"],
+  ["practical", "Praktis untuk dipesan"],
+  ["community", "Favorit pelanggan"],
+  ["new", "Produk/layanan terbaru"],
+  ["detail", "Detail & profesional"],
+  ["simple", "Singkat & informatif"],
+];
+
+// Kontak dan lokasi tidak memerlukan banyak variasi copy. Satu preset lengkap
+// lebih jelas, lalu tiap kartu tetap bebas diedit atau dimatikan pengguna.
+const CONTACT_TEMPLATE_OPTIONS = [["contact_complete", "Kontak & lokasi lengkap"]];
+
+const optionCopy = {
+  quality: ["Kualitas Terpilih", "Standar terbaik untuk setiap pesanan."],
+  service: ["Layanan Responsif", "Kami siap membantu dengan cepat dan ramah."],
+  value: ["Pilihan Bernilai", "Kualitas yang sepadan untuk kebutuhan Anda."],
+  local: ["Dekat dengan Anda", "Melayani kebutuhan pelanggan lokal dengan sepenuh hati."],
+  premium: ["Pengalaman Premium", "Perhatian pada detail untuk hasil yang istimewa."],
+  practical: ["Pesan Tanpa Ribet", "Informasi jelas dan pemesanan mudah via WhatsApp."],
+  community: ["Pilihan Pelanggan", "Dipercaya dan dipilih kembali oleh pelanggan kami."],
+  new: ["Selalu Berkembang", "Pilihan segar yang terus kami perbarui untuk Anda."],
+  detail: ["Dikerjakan dengan Teliti", "Komitmen profesional dari awal hingga selesai."],
+  simple: ["Mudah & Jelas", "Semua yang Anda butuhkan tersedia dalam satu tempat."],
+};
+
+function categoryPreset(site) {
+  const category = `${site.category || ""} ${site.businessName || ""}`.toLowerCase();
+  if (/coffee|kopi|cafe|kedai/.test(category)) return PRESETS.kopi;
+  if (/restaurant|bakery|makanan|kuliner|roti/.test(category)) return PRESETS.kuliner;
+  if (/fashion|retail|beauty/.test(category)) return PRESETS.fashion;
+  if (/otomotif|barber/.test(category)) return PRESETS.otomotif;
+  if (/jasa|pendidikan/.test(category)) return PRESETS.jasa;
+  return PRESETS.umum;
+}
+
+function sectionTemplateData(site, section, variantId) {
+  const base = categoryPreset(site);
+  const index = SECTION_TEMPLATE_OPTIONS.findIndex(([id]) => id === variantId);
+  const shift = (items) => items.map((_, i) => ({ ...items[(i + Math.max(index, 0)) % items.length] }));
+  const [title, desc] = optionCopy[variantId] || optionCopy.quality;
+  if (section === "highlights") {
+    const highlights = shift(base.highlights);
+    highlights[0] = { ...highlights[0], title, desc };
+    return { highlights, highlightsVisible: true };
+  }
+  if (section === "testimonials") {
+    const testimonials = shift(base.testimonials);
+    if (testimonials[0]) testimonials[0] = { ...testimonials[0], role: `${base.label} · Pelanggan`, comment: `${testimonials[0].comment} ${desc}` };
+    return { testimonials, testimonialsVisible: true };
+  }
+  if (section === "faq") {
+    const faq = shift(base.faq);
+    if (faq[0]) faq[0] = { ...faq[0], q: `Apa keunggulan ${title.toLowerCase()}?`, a: desc };
+    return { faq, faqVisible: true };
+  }
+  const contactVariants = [
+    { address: true, hours: true, social: true }, { address: true, hours: false, social: true },
+    { address: false, hours: true, social: true }, { address: true, hours: true, social: false },
+    { address: true, hours: false, social: false }, { address: false, hours: true, social: false },
+    { address: false, hours: false, social: true }, { address: true, hours: true, social: true },
+    { address: true, hours: true, social: true }, { address: true, hours: true, social: true },
+  ];
+  return { contactVisible: true, contactCards: contactVariants[Math.max(index, 0)], businessHours: base.hours };
+}
+
 const emptyHighlight = () => ({ title: "", desc: "", icon: "ShieldCheck" });
 const emptyTestimonial = () => ({ name: "", role: "Pelanggan", comment: "", rating: 5 });
 const emptyFaq = () => ({ q: "", a: "" });
 
 export const makeDefaultSections = () => ({
-  templateStyle: "modern",
-  primaryColor: "#16A34A",
-  accentColor: "#14532D",
+  heroTitle: null,
+  heroSubtitle: null,
+  about: null,
   highlightsVisible: true,
   testimonialsVisible: true,
   faqVisible: true,
@@ -168,6 +241,19 @@ export const makeDefaultSections = () => ({
   testimonials: DEFAULT_TESTIMONIALS.map((t) => ({ ...t })),
   faq: DEFAULT_FAQ.map((f) => ({ ...f })),
   businessHours: "",
+});
+
+const randomSectionVariant = () =>
+  SECTION_TEMPLATE_OPTIONS[Math.floor(Math.random() * SECTION_TEMPLATE_OPTIONS.length)]?.[0] || "quality";
+
+// Isi awal setiap section diacak secara terpisah, tetapi selalu berasal dari
+// preset yang sesuai kategori. Pengguna tetap dapat menggantinya dari dropdown.
+export const makeRandomSections = (site = {}) => ({
+  ...makeDefaultSections(),
+  ...sectionTemplateData(site, "highlights", randomSectionVariant()),
+  ...sectionTemplateData(site, "testimonials", randomSectionVariant()),
+  ...sectionTemplateData(site, "faq", randomSectionVariant()),
+  ...sectionTemplateData(site, "contact", "contact_complete"),
 });
 
 const Field = ({ label, children }) => (
@@ -206,7 +292,7 @@ function IconSelect({ value, onChange, disabled }) {
   );
 }
 
-function SectionCard({ icon: Icon, tint, title, subtitle, visible, onToggle, children, testid }) {
+function SectionCard({ icon: Icon, tint, title, subtitle, visible = true, onToggle, presetControl, toggleable = true, children, testid }) {
   return (
     <section data-testid={testid} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -220,12 +306,15 @@ function SectionCard({ icon: Icon, tint, title, subtitle, visible, onToggle, chi
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-2">
-            <span className={`text-xs font-semibold ${visible ? "text-emerald-600" : "text-slate-400"}`}>
-              {visible ? "Tampil" : "Disembunyikan"}
-            </span>
-            <Switch checked={visible} onCheckedChange={onToggle} />
-          </label>
+          {presetControl}
+          {toggleable && (
+            <label className="flex cursor-pointer items-center gap-2">
+              <span className={`text-xs font-semibold ${visible ? "text-emerald-600" : "text-slate-400"}`}>
+                {visible ? "Tampil" : "Disembunyikan"}
+              </span>
+              <Switch checked={visible} onCheckedChange={onToggle} />
+            </label>
+          )}
         </div>
       </div>
       <div className={visible ? "" : "pointer-events-none select-none opacity-40"}>{children}</div>
@@ -233,10 +322,59 @@ function SectionCard({ icon: Icon, tint, title, subtitle, visible, onToggle, chi
   );
 }
 
+function SectionPresetSelect({ site, section, onApply }) {
+  const base = categoryPreset(site);
+  const options = section === "contact" ? CONTACT_TEMPLATE_OPTIONS : SECTION_TEMPLATE_OPTIONS;
+  const label = section === "contact" ? "Contoh kontak & lokasi" : `Contoh ${base.label}`;
+  return (
+    <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+      <LayoutTemplate size={14} className="text-emerald-600" />
+      <select
+        data-testid={`section-${section}-template-select`}
+        className="max-w-[205px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-emerald-500"
+        defaultValue=""
+        onChange={(e) => {
+          if (!e.target.value) return;
+          onApply(sectionTemplateData(site, section, e.target.value));
+          e.target.value = "";
+        }}
+      >
+        <option value="">{label} ({options.length})</option>
+        {options.map(([id, optionLabel], index) => <option key={id} value={id}>{index + 1}. {optionLabel}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function CoverTemplateSelect({ site, onApply }) {
+  const options = getContentTemplates(site.category);
+  return (
+    <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+      <LayoutTemplate size={14} className="text-emerald-600" />
+      <select
+        data-testid="section-cover-template-select"
+        className="max-w-[225px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-emerald-500"
+        defaultValue=""
+        onChange={(e) => {
+          if (!e.target.value) return;
+          const template = options.find((item) => item.id === e.target.value);
+          if (template) onApply(template);
+          e.target.value = "";
+        }}
+      >
+        <option value="">Contoh Cover {options[0]?.category || "Usaha"} (10)</option>
+        {options.map((template, index) => (
+          <option key={template.id} value={template.id}>{index + 1}. {template.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 const addItemBtnCls =
   "flex w-full items-center justify-center gap-1.5 py-3 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40";
 
-export function SectionForm({ site = {}, cfg, set }) {
+export function SectionForm({ site = {}, cfg, set, onCoverTemplateApply }) {
   const [openFaq, setOpenFaq] = useState(0);
   const setCard = (key, val) => set({ contactCards: { ...cfg.contactCards, [key]: val } });
 
@@ -247,71 +385,38 @@ export function SectionForm({ site = {}, cfg, set }) {
         <span>Section yang dimatikan <b>(OFF)</b> tidak akan muncul di halaman utama website.</span>
       </div>
 
-      {/* TEMPLATE & COLOR PALETTE SELECTOR */}
-      {cfg.templateStyle && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="text-emerald-600" size={18} />
-              <h3 className="text-sm font-bold text-slate-800">Pilihan Template Website &amp; Palet Warna</h3>
-            </div>
-            <span className="text-xs font-semibold uppercase text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">5 Alternatif</span>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {WEBSITE_TEMPLATES.map((tpl) => {
-              const active = cfg.templateStyle === tpl.id;
-              return (
-                <div
-                  key={tpl.id}
-                  onClick={() => set({ templateStyle: tpl.id })}
-                  className={`cursor-pointer rounded-xl border p-3.5 transition ${
-                    active
-                      ? "border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-400/20 shadow-sm"
-                      : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-                >
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                      {tpl.badge}
-                    </span>
-                    {active && <Check size={16} className="text-emerald-600" />}
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900">{tpl.name}</h4>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Color palette options */}
-          <div className="pt-2 border-t border-slate-100">
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Skema Warna Utama</label>
-            <div className="flex flex-wrap items-center gap-2">
-              {COLOR_PALETTES.map((pal) => {
-                const active = cfg.primaryColor === pal.primary;
-                return (
-                  <button
-                    key={pal.id}
-                    type="button"
-                    onClick={() => set({ primaryColor: pal.primary, accentColor: pal.accent })}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
-                      active ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-400/20" : "border-slate-200 bg-white hover:bg-slate-50"
-                    }`}
-                  >
-                    <span className="h-4 w-4 rounded-full border border-white shadow-sm" style={{ background: pal.primary }} />
-                    <span>{pal.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      {/* SECTION 1: COVER WEBSITE */}
+      <SectionCard testid="section-cover" icon={PanelsTopLeft} tint="bg-emerald-50 text-emerald-600"
+        title="Section 1 · Cover Website" subtitle="Judul utama, subjudul, dan cerita singkat tentang bisnis"
+        presetControl={<CoverTemplateSelect site={site} onApply={(template) => {
+          if (onCoverTemplateApply) onCoverTemplateApply(template);
+          else set(coverPatchFromTemplate(template));
+        }} />}
+        toggleable={false}>
+        <div className="grid gap-4 p-5">
+          <Field label="Judul hero">
+            <input data-testid="cover-hero-title-input" className={inputCls} value={cfg.heroTitle ?? ""}
+              onChange={(e) => set({ heroTitle: e.target.value })}
+              placeholder="Contoh: Temukan Jeda di Setiap Tegukan Kopi Pilihan." />
+          </Field>
+          <Field label="Sub-hero">
+            <textarea rows={2} data-testid="cover-hero-subtitle-input" className={inputCls} value={cfg.heroSubtitle ?? ""}
+              onChange={(e) => set({ heroSubtitle: e.target.value })}
+              placeholder="Tulis kalimat pendukung singkat untuk cover website..." />
+          </Field>
+          <Field label="Tentang bisnis">
+            <textarea rows={4} data-testid="cover-about-input" className={inputCls} value={cfg.about ?? ""}
+              onChange={(e) => set({ about: e.target.value })}
+              placeholder="Ceritakan bisnis, ciri khas, dan nilai yang ingin dikenal pelanggan..." />
+          </Field>
         </div>
-      )}
+      </SectionCard>
 
-      {/* SECTION 1: KEUNGGULAN */}
+      {/* SECTION 2: KEUNGGULAN */}
       <SectionCard testid="section-highlights" icon={Trophy} tint="bg-amber-50 text-amber-600"
-        title="Section 1 · Keunggulan" subtitle="3 kartu berisi ikon, judul, dan deskripsi unggulan usaha"
-        visible={cfg.highlightsVisible} onToggle={(v) => set({ highlightsVisible: v })}>
+        title="Section 2 · Keunggulan" subtitle="3 kartu berisi ikon, judul, dan deskripsi unggulan usaha"
+        visible={cfg.highlightsVisible} onToggle={(v) => set({ highlightsVisible: v })}
+        presetControl={<SectionPresetSelect site={site} section="highlights" onApply={set} />}>
         <div className="grid gap-4 p-5 sm:grid-cols-3">
           {cfg.highlights.slice(0, 3).map((h, i) => {
             const Preview = ICON_MAP[h.icon] || ShieldCheck;
@@ -345,10 +450,11 @@ export function SectionForm({ site = {}, cfg, set }) {
         </div>
       </SectionCard>
 
-      {/* SECTION 2: ULASAN PELANGGAN — satu container, item di dalamnya */}
+      {/* SECTION 3: ULASAN PELANGGAN — satu container, item di dalamnya */}
       <SectionCard testid="section-testimonials" icon={MessageSquareQuote} tint="bg-violet-50 text-violet-600"
-        title="Section 2 · Ulasan Pelanggan" subtitle={`Kartu rating bintang, kutipan, nama, dan label status · ${cfg.testimonials.length} ulasan`}
-        visible={cfg.testimonialsVisible} onToggle={(v) => set({ testimonialsVisible: v })}>
+        title="Section 3 · Ulasan Pelanggan" subtitle={`Kartu rating bintang, kutipan, nama, dan label status · ${cfg.testimonials.length} ulasan`}
+        visible={cfg.testimonialsVisible} onToggle={(v) => set({ testimonialsVisible: v })}
+        presetControl={<SectionPresetSelect site={site} section="testimonials" onApply={set} />}>
         <div className="p-5">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="divide-y divide-slate-100">
@@ -406,10 +512,11 @@ export function SectionForm({ site = {}, cfg, set }) {
         </div>
       </SectionCard>
 
-      {/* SECTION 3: FAQ — satu container accordion */}
+      {/* SECTION 4: FAQ — satu container accordion */}
       <SectionCard testid="section-faq" icon={HelpCircle} tint="bg-sky-50 text-sky-600"
-        title="Section 3 · FAQ" subtitle={`Accordion pertanyaan umum · ${cfg.faq.length} pertanyaan`}
-        visible={cfg.faqVisible} onToggle={(v) => set({ faqVisible: v })}>
+        title="Section 4 · FAQ" subtitle={`Accordion pertanyaan umum · ${cfg.faq.length} pertanyaan`}
+        visible={cfg.faqVisible} onToggle={(v) => set({ faqVisible: v })}
+        presetControl={<SectionPresetSelect site={site} section="faq" onApply={set} />}>
         <div className="p-5">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="divide-y divide-slate-100">
@@ -455,10 +562,11 @@ export function SectionForm({ site = {}, cfg, set }) {
         </div>
       </SectionCard>
 
-      {/* SECTION 4: KONTAK & LOKASI */}
+      {/* SECTION 5: KONTAK & LOKASI */}
       <SectionCard testid="section-contact" icon={MapPinned} tint="bg-emerald-50 text-emerald-600"
-        title="Section 4 · Kontak & Lokasi" subtitle="3 kartu kontak — tiap kartu bisa dinyalakan/dimatikan sendiri"
-        visible={cfg.contactVisible} onToggle={(v) => set({ contactVisible: v })}>
+        title="Section 5 · Kontak & Lokasi" subtitle="3 kartu kontak — tiap kartu bisa dinyalakan/dimatikan sendiri"
+        visible={cfg.contactVisible} onToggle={(v) => set({ contactVisible: v })}
+        presetControl={<SectionPresetSelect site={site} section="contact" onApply={set} />}>
         <div className="grid gap-4 p-5 md:grid-cols-3">
           {/* Card 1: Alamat + Maps */}
           <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.address ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 bg-slate-50/60"}`}>
@@ -533,14 +641,11 @@ export function SectionManager() {
         typeof h === "string" ? { title: h, desc: "", icon: "ShieldCheck" } : h
       );
       const d = makeDefaultSections();
-      const tStyle = site.templateStyle || site.themeConfig?.style || "modern";
-      const pri = site.themeConfig?.primary || "#16A34A";
-      const acc = site.themeConfig?.accent || "#14532D";
       setCfg({
         ...d,
-        templateStyle: tStyle,
-        primaryColor: pri,
-        accentColor: acc,
+        heroTitle: typeof ai.heroTitle === "string" ? ai.heroTitle : "",
+        heroSubtitle: typeof ai.heroSubtitle === "string" ? ai.heroSubtitle : "",
+        about: typeof ai.about === "string" ? ai.about : (site.description || ""),
         highlightsVisible: vis.highlights !== false,
         testimonialsVisible: vis.testimonials !== false,
         faqVisible: vis.faq !== false,
@@ -563,11 +668,6 @@ export function SectionManager() {
     setSaving(true); setErr("");
     try {
       await api.put(`/websites/${id}/sections`, cfg);
-      await api.put(`/websites/${id}/theme`, {
-        style: cfg.templateStyle,
-        primary: cfg.primaryColor,
-        accent: cfg.accentColor,
-      });
       setSaved(true);
       setTimeout(() => nav(`/dashboard/websites/${id}`), 700);
     } catch (e) { setErr(errorText(e)); }

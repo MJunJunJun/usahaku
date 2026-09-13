@@ -2,16 +2,17 @@ import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { LayoutDashboard, LogOut, Plus, Sparkles, Store, CreditCard, Settings, Bell, Users, ClipboardList, ScrollText, Cog, Ticket, MessageSquare, Radio, BookUser } from "lucide-react";
 import { api, daysUntil } from "./api";
+import { APP_NAME } from "./config";
 
 export const Brand = ({ light = false, mini = false }) => (
   <Link data-testid="brand-logo" className={`brand ${light ? "brand-light" : ""} ${mini ? "brand-mini" : ""}`} to="/">
     <span className="brand-mark"><Store size={mini ? 14 : 17} /></span>
-    {!mini && "UsahaKu"}
+    {!mini && APP_NAME}
   </Link>
 );
 
-export const Button = ({ children, variant = "primary", ...props }) => (
-  <button data-testid={props["data-testid"] || "action-button"} className={`btn btn-${variant}`} {...props}>
+export const Button = ({ children, variant = "primary", className = "", ...props }) => (
+  <button data-testid={props["data-testid"] || "action-button"} className={`btn btn-${variant} ${className}`.trim()} {...props}>
     {children}
   </button>
 );
@@ -33,16 +34,15 @@ export const useUser = (redirectOnFail = "/login") => {
 
 export const UserSidebar = ({ user, showTrial = true }) => {
   const nav = useNavigate();
-  const trial = daysUntil(user.trialEndDate);
   const status = user.subscriptionStatus;
-  const expiryDays = daysUntil(user.subscriptionExpiryDate);
+  const expiryDays = daysUntil(status === "TRIAL_ACTIVE" ? user.trialEndDate : user.subscriptionExpiryDate);
   return (
     <aside className="app-sidebar">
       <Brand />
       <div className="side-label">RUANG KERJA</div>
       <Link data-testid="sidebar-dashboard" to="/dashboard"><LayoutDashboard size={17} />Ringkasan</Link>
       <Link data-testid="sidebar-websites" to="/dashboard/websites"><Store size={17} />Website saya</Link>
-      <Link data-testid="sidebar-create" to="/dashboard/websites/create" className="side-create"><Plus size={17} />Buat website</Link>
+      <Link data-testid="sidebar-create" to="/dashboard/websites/create" className="side-create"><Plus size={17} />{status === "TRIAL_PENDING" ? "Buat website Gratis" : "Buat website"}</Link>
       <Link data-testid="sidebar-subscription" to="/dashboard/subscription"><CreditCard size={17} />Paket & billing</Link>
       <Link data-testid="sidebar-coupons" to="/dashboard/coupons"><Ticket size={17} />Kupon saya</Link>
       <Link data-testid="sidebar-notifications" to="/dashboard/notifications"><Bell size={17} />Notifikasi</Link>
@@ -51,15 +51,17 @@ export const UserSidebar = ({ user, showTrial = true }) => {
         <div className="trial-mini">
           <Sparkles size={16} />
           <b>
-            {status === "TRIAL_ACTIVE" && "Trial gratis"}
+            {status === "TRIAL_PENDING" && "Gratis"}
+            {status === "TRIAL_ACTIVE" && "Paket Gratis"}
             {status === "ACTIVE" && "Berlangganan aktif"}
-            {status === "TRIAL_EXPIRED" && "Trial berakhir"}
+            {status === "TRIAL_EXPIRED" && "Paket Gratis tidak aktif"}
             {status === "EXPIRED" && "Berlangganan berakhir"}
           </b>
           <span>
-            {status === "TRIAL_ACTIVE" && `${trial} hari tersisa`}
+            {status === "TRIAL_PENDING" && "Buat 1 website gratis"}
+            {status === "TRIAL_ACTIVE" && `${expiryDays} hari tersisa`}
             {status === "ACTIVE" && `${expiryDays} hari tersisa`}
-            {(status === "TRIAL_EXPIRED" || status === "EXPIRED") && "Perpanjang untuk lanjut"}
+            {(status === "TRIAL_EXPIRED" || status === "EXPIRED") && "Pilih paket untuk lanjut"}
           </span>
           <Link data-testid="sidebar-manage-plan" to="/dashboard/subscription">Kelola paket →</Link>
         </div>
@@ -83,7 +85,6 @@ export const AdminSidebar = () => {
       <Link data-testid="admin-sidebar-payments" to="/admin/payment-requests"><ClipboardList size={17} />Pembayaran</Link>
       <Link data-testid="admin-sidebar-plans" to="/admin/plans"><CreditCard size={17} />Paket</Link>
       <Link data-testid="admin-sidebar-coupons" to="/admin/coupons"><Ticket size={17} />Kupon</Link>
-      <Link data-testid="admin-sidebar-wa-chat" to="/admin/wa-chat"><MessageSquare size={17} />Chat WA</Link>
       <Link data-testid="admin-sidebar-wa-contacts" to="/admin/wa-contacts"><BookUser size={17} />Kontak WA</Link>
       <Link data-testid="admin-sidebar-whatsapp" to="/admin/whatsapp"><Radio size={17} />WhatsApp</Link>
       <Link data-testid="admin-sidebar-logs" to="/admin/activity-logs"><ScrollText size={17} />Aktivitas</Link>
@@ -123,9 +124,10 @@ export const AdminShell = ({ children }) => {
 
 export const StatusBadge = ({ status }) => {
   const map = {
-    TRIAL_ACTIVE: { label: "Trial aktif", cls: "badge-info" },
+    TRIAL_PENDING: { label: "Gratis", cls: "badge-neutral" },
+    TRIAL_ACTIVE: { label: "Paket Gratis", cls: "badge-info" },
     ACTIVE: { label: "Berlangganan", cls: "badge-success" },
-    TRIAL_EXPIRED: { label: "Trial berakhir", cls: "badge-warning" },
+    TRIAL_EXPIRED: { label: "Paket Gratis tidak aktif", cls: "badge-warning" },
     EXPIRED: { label: "Berakhir", cls: "badge-danger" },
     PAYMENT_PENDING: { label: "Menunggu bayar", cls: "badge-info" },
     PENDING: { label: "Menunggu", cls: "badge-warning" },

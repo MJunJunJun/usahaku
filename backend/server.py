@@ -52,11 +52,55 @@ TRIAL_DAYS = 30
 AUTH_COOKIE_DAYS = int(os.environ.get("AUTH_COOKIE_DAYS", "30"))
 ADDITIONAL_WEBSITE_PRICE = 25000
 storage_key = None
+
+def load_jwt_secret():
+    """Use the configured secret, or persist a local-development secret.
+
+    The fallback prevents every local restart from breaking login. Production
+    should still provide JWT_SECRET so multiple containers share one key.
+    """
+    configured = (os.environ.get("JWT_SECRET") or "").strip()
+    if configured:
+        return configured
+    secret_file = Path(os.environ.get("JWT_SECRET_FILE") or (ROOT_DIR / ".runtime" / "jwt-secret"))
+    if secret_file.exists():
+        saved = secret_file.read_text(encoding="utf-8").strip()
+        if saved:
+            return saved
+    secret_file.parent.mkdir(parents=True, exist_ok=True)
+    generated = secrets.token_urlsafe(64)
+    secret_file.write_text(generated, encoding="utf-8")
+    log.warning("JWT_SECRET belum diatur; memakai secret lokal persisten di %s", secret_file)
+    return generated
+
+JWT_SECRET = load_jwt_secret()
+COOKIE_DOMAIN = (os.environ.get("COOKIE_DOMAIN") or "").strip() or None
+COOKIE_SAMESITE = (os.environ.get("COOKIE_SAMESITE") or "lax").strip().lower()
+if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    COOKIE_SAMESITE = "lax"
+
+def request_is_secure(request: Request):
+    configured = (os.environ.get("COOKIE_SECURE") or "auto").strip().lower()
+    if configured in {"1", "true", "yes", "on"}:
+        return True
+    if configured in {"0", "false", "no", "off"}:
+        return False
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
+    return request.url.scheme == "https" or forwarded_proto == "https"
+
+def set_auth_cookie(response: Response, request: Request, value: str):
+    response.set_cookie(
+        "access_token", value,
+        httponly=True, samesite=COOKIE_SAMESITE,
+        max_age=AUTH_COOKIE_DAYS * 86400, secure=request_is_secure(request),
+        domain=COOKIE_DOMAIN, path="/",
+    )
+
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 
 DEFAULT_PLANS = [
-    {"id": "trial", "slug": "trial", "name": "Trial Gratis", "monthlyPrice": 0, "websiteLimit": 1, "features": ["1 website", "AI generation", "Katalog produk", "WhatsApp & Google Maps"], "isActive": True, "isDefault": True, "allowsAdditional": False},
+    {"id": "trial", "slug": "trial", "name": "Gratis", "monthlyPrice": 0, "websiteLimit": 1, "features": ["1 website", "AI generation", "Katalog produk", "WhatsApp & Google Maps"], "isActive": True, "isDefault": True, "allowsAdditional": False},
     {"id": "basic", "slug": "basic", "name": "Basic", "monthlyPrice": 50000, "websiteLimit": 1, "features": ["1 website", "AI generation & editing", "Katalog tanpa batas", "Dukungan prioritas"], "isActive": True, "allowsAdditional": False},
     {"id": "premium", "slug": "premium", "name": "Premium", "monthlyPrice": 100000, "websiteLimit": 3, "features": ["3 website", "AI generation & editing", "Katalog tanpa batas", "Dukungan prioritas"], "isActive": True, "allowsAdditional": False},
     {"id": "platinum", "slug": "platinum", "name": "Platinum", "monthlyPrice": 100000, "websiteLimit": 3, "features": ["3 website + bisa ditambah", "+Rp25.000 per website tambahan", "AI generation & editing", "Dukungan prioritas"], "isActive": True, "allowsAdditional": True},
@@ -64,8 +108,8 @@ DEFAULT_PLANS = [
 
 DEFAULT_SETTINGS = {
     "id": "platform",
-    "applicationName": "UsahaKu",
-    "supportEmail": "hello@usahaku.id",
+    "applicationName": os.environ.get("APP_NAME", "UsahaKu"),
+    "supportEmail": os.environ.get("SUPPORT_EMAIL", "hello@usahaku.id"),
     "adminWhatsapp": "6281234567890",
     "bankName": "Bank BCA",
     "accountName": "PT UsahaKu Digital Indonesia",
@@ -73,6 +117,38 @@ DEFAULT_SETTINGS = {
     "paymentInstructions": "Silakan transfer sejumlah total tagihan ke rekening di atas. Setelah transfer, unggah bukti pembayaran dan hubungi admin melalui WhatsApp untuk verifikasi lebih cepat.",
     "additionalWebsitePrice": ADDITIONAL_WEBSITE_PRICE,
 }
+
+# Website ini hanya untuk halaman "Contoh" di landing page. Produk disimpan
+# seperti produk biasa agar pengunjung dapat melihat katalog yang realistis.
+SHOWCASE_SITES = [
+    {"slug": "demo-kopi-senja", "name": "Kopi Senja", "category": "Coffee Shop", "style": "modern", "primary": "#7a4c2e", "cover": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1600&auto=format&fit=crop", "hero": "Temukan jeda di setiap teguk.", "description": "Kedai kopi lokal dengan suasana hangat untuk bekerja dan berbincang.", "products": [("Es Kopi Gula Aren", 28000), ("Cappuccino Klasik", 32000), ("Americano", 24000), ("Matcha Latte", 33000), ("Croissant Butter", 22000), ("Banana Bread", 24000), ("Paket Kopi Pagi", 45000)]},
+    {"slug": "demo-rumah-roti", "name": "Rumah Roti", "category": "Bakery", "style": "modern", "primary": "#a16207", "cover": "https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=1600&auto=format&fit=crop", "hero": "Roti hangat, dibuat setiap pagi.", "description": "Bakery rumahan dengan roti segar, kue lembut, dan bahan pilihan.", "products": [("Sourdough Original", 45000), ("Roti Sobek Cokelat", 30000), ("Croissant Almond", 28000), ("Cinnamon Roll", 26000), ("Pain au Chocolat", 29000), ("Donat Kentang", 18000), ("Paket Sarapan", 55000)]},
+    {"slug": "demo-nusa-craft", "name": "Nusa Craft", "category": "Fashion", "style": "modern", "primary": "#0f766e", "cover": "https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=1600&auto=format&fit=crop", "hero": "Karya lokal untuk gaya yang berkarakter.", "description": "Koleksi fashion dan aksesori pilihan yang memadukan karya lokal dan gaya modern.", "products": [("Kemeja Linen Aruna", 245000), ("Outer Tenun Sumba", 389000), ("Tote Bag Kanvas", 125000), ("Scarf Motif Nusa", 99000), ("Celana Santai Rami", 215000), ("Dompet Kulit Mini", 159000), ("Gift Set Nusantara", 325000)]},
+    {"slug": "demo-barber-co", "name": "Barber Co", "category": "Barbershop", "style": "modern", "primary": "#1f2937", "cover": "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?q=80&w=1600&auto=format&fit=crop", "hero": "Potongan rapi, percaya diri setiap hari.", "description": "Barbershop modern dengan barber berpengalaman dan suasana santai.", "products": [("Classic Haircut", 50000), ("Skin Fade", 65000), ("Haircut + Wash", 75000), ("Beard Trim", 35000), ("Hot Towel Shave", 55000), ("Kids Haircut", 40000), ("Paket Grooming", 115000)]},
+    {"slug": "demo-sari-beauty", "name": "Sari Beauty", "category": "Beauty", "style": "modern", "primary": "#db2777", "cover": "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=1600&auto=format&fit=crop", "hero": "Rawat diri, pancarkan versi terbaikmu.", "description": "Perawatan kecantikan yang personal, nyaman, dan ditangani terapis terpercaya.", "products": [("Basic Facial", 125000), ("Brightening Facial", 180000), ("Manicure Express", 85000), ("Gel Polish", 120000), ("Lash Lift", 175000), ("Hair Spa", 150000), ("Paket Glow Up", 350000)]},
+    {"slug": "demo-warung-sundari", "name": "Warung Sundari", "category": "Restaurant", "style": "modern", "primary": "#b45309", "cover": "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?q=80&w=1600&auto=format&fit=crop", "hero": "Rasa rumahan yang selalu dirindukan.", "description": "Masakan Nusantara sehari-hari dengan bumbu segar dan cita rasa rumahan.", "products": [("Nasi Ayam Bakar", 32000), ("Nasi Rendang", 35000), ("Soto Ayam", 28000), ("Gado-Gado", 25000), ("Sate Ayam", 30000), ("Es Teh Manis", 8000), ("Paket Keluarga", 125000)]},
+]
+
+async def ensure_showcase_sites(admin_whatsapp: str):
+    showcase_owner_id = "usahaku-showcase-owner"
+    if not await db.users.find_one({"id": showcase_owner_id}):
+        await db.users.insert_one({"id": showcase_owner_id, "name": "UsahaKu Showcase", "email": "showcase@usahaku.internal", "password_hash": "", "role": "SYSTEM", "accountStatus": "ACTIVE", "subscriptionStatus": "ACTIVE", "planSlug": "premium", "websiteQuota": 999, "createdAt": now()})
+    for spec in SHOWCASE_SITES:
+        site = await db.websites.find_one({"slug": spec["slug"]}, {"_id": 0})
+        website_id = site["id"] if site else uid()
+        website = {
+            "id": website_id, "userId": showcase_owner_id, "isShowcase": True,
+            "businessName": spec["name"], "category": spec["category"], "description": spec["description"],
+            "logoUrl": f"/api/showcase/logo/{spec['slug']}", "coverImageUrl": f"/assets/showcase/{spec['slug'].replace('demo-', '')}-cover.png", "whatsapp": admin_whatsapp, "phone": "", "email": "", "instagram": "", "facebook": "", "tiktok": "", "address": "Indonesia", "city": "", "province": "", "postalCode": "", "latitude": None, "longitude": None, "customDomain": "", "status": "PUBLISHED", "slug": spec["slug"], "templateStyle": "modern",
+            "themeConfig": {"primary": spec["primary"], "accent": spec["primary"], "style": spec["style"]},
+            "aiGeneratedContent": {"heroTitle": spec["hero"], "heroSubtitle": spec["description"], "heroCta": "Lihat katalog", "about": spec["description"], "highlights": ["Pilihan berkualitas", "Mudah dipesan", "Pelayanan ramah"], "productHeadline": "Pilihan favorit", "primaryColor": spec["primary"], "accentColor": spec["primary"], "style": spec["style"]},
+            "businessHours": [], "updatedAt": now(), "createdAt": site.get("createdAt", now()) if site else now(),
+        }
+        await db.websites.update_one({"id": website_id}, {"$set": website}, upsert=True)
+        await db.products.delete_many({"websiteId": website_id})
+        for index, (name, price) in enumerate(spec["products"]):
+            image_url = f"/assets/showcase/{spec['slug'].replace('demo-', '')}-{slugify(name)}.png"
+            await db.products.insert_one({"id": uid(), "websiteId": website_id, "name": name, "description": f"{name} pilihan {spec['name']}, disiapkan dengan bahan berkualitas dan perhatian pada setiap detail.", "price": price, "images": [image_url], "category": spec["category"], "sortOrder": index, "createdAt": now()})
 
 def now(): return datetime.now(timezone.utc).isoformat()
 def uid(): return str(uuid.uuid4())
@@ -82,7 +158,7 @@ def public(doc):
 def hash_password(value): return bcrypt.hashpw(value.encode(), bcrypt.gensalt()).decode()
 def verify_password(value, hashed): return bcrypt.checkpw(value.encode(), hashed.encode())
 def token(user_id, kind="access", days=7):
-    return jwt.encode({"sub": user_id, "type": kind, "exp": datetime.now(timezone.utc) + timedelta(days=days)}, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+    return jwt.encode({"sub": user_id, "type": kind, "exp": datetime.now(timezone.utc) + timedelta(days=days)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 def slugify(text):
     return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-") or "website"
@@ -91,7 +167,7 @@ async def current_user(request: Request):
     raw = request.cookies.get("access_token") or request.headers.get("Authorization", "").replace("Bearer ", "")
     if not raw: raise HTTPException(401, "Silakan masuk terlebih dahulu")
     try:
-        payload = jwt.decode(raw, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(raw, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         raise HTTPException(401, "Sesi sudah berakhir. Silakan masuk lagi.")
     user = await db.users.find_one({"id": payload.get("sub")}, {"_id": 0})
@@ -114,17 +190,22 @@ async def refresh_status(user):
     if new_status:
         await db.users.update_one({"id": user["id"]}, {"$set": {"subscriptionStatus": new_status}})
         user["subscriptionStatus"] = new_status
-        await notify(user["id"], "Status berlangganan diperbarui", "Berlangganan atau trial Anda telah berakhir. Perpanjang untuk menghidupkan kembali website.")
+        await notify(user["id"], "Status berlangganan diperbarui", "Akses paket Anda telah berakhir. Pilih paket untuk menghidupkan kembali website.")
     return user
 
 def is_owner_active(user):
-    return user.get("role") == "ADMIN" or user.get("subscriptionStatus") in ("TRIAL_ACTIVE", "ACTIVE")
+    return user.get("role") == "ADMIN" or user.get("subscriptionStatus") in ("TRIAL_PENDING", "TRIAL_ACTIVE", "ACTIVE")
 
 def quota_for(user):
     if user.get("role") == "ADMIN": return 999
     if user.get("subscriptionStatus") == "ACTIVE": return int(user.get("websiteQuota", 1))
-    if user.get("subscriptionStatus") == "TRIAL_ACTIVE": return int(user.get("websiteQuota", 1))
+    if user.get("subscriptionStatus") in ("TRIAL_PENDING", "TRIAL_ACTIVE"): return int(user.get("websiteQuota", 1))
     return 0
+
+def product_limit_for(user):
+    """Trial Gratis may show up to three catalogue items per website."""
+    if user.get("role") == "ADMIN": return None
+    return 3 if user.get("planSlug") == "trial" else None
 
 async def notify(user_id, title, message):
     await db.notifications.insert_one({"id": uid(), "userId": user_id, "title": title, "message": message, "isRead": False, "createdAt": now()})
@@ -152,6 +233,7 @@ class WaVerifyInput(BaseModel):
 
 class WebsiteInput(BaseModel):
     businessName: str
+    storeSlug: str = ""
     category: str = "Lainnya"
     description: str = ""
     logoUrl: str = ""
@@ -214,6 +296,9 @@ class ContactCardsInput(BaseModel):
     social: bool = True
 
 class SectionsConfigInput(BaseModel):
+    heroTitle: Optional[str] = None
+    heroSubtitle: Optional[str] = None
+    about: Optional[str] = None
     highlightsVisible: Optional[bool] = None
     testimonialsVisible: Optional[bool] = None
     faqVisible: Optional[bool] = None
@@ -264,6 +349,7 @@ class SettingsInput(BaseModel):
     accountNumber: Optional[str] = None
     paymentInstructions: Optional[str] = None
     additionalWebsitePrice: Optional[int] = None
+    waMessageTemplates: Optional[List[dict]] = None
 
 class UserAdminAction(BaseModel):
     action: str
@@ -279,7 +365,8 @@ class ResetInput(BaseModel):
 class ForgotInput(BaseModel):
     email: EmailStr
 
-UPLOAD_DIR = ROOT_DIR / "uploads"
+_upload_setting = Path(os.environ.get("UPLOAD_DIR", "uploads"))
+UPLOAD_DIR = (_upload_setting if _upload_setting.is_absolute() else ROOT_DIR / _upload_setting).resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def init_storage():
@@ -317,7 +404,8 @@ async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
     except Exception:
         pass
 
-    record = {"id": file_id, "userId": user["id"], "localPath": str(local_file_path), "storagePath": cloud_path, "contentType": file.content_type, "originalFilename": file.filename, "size": len(data), "createdAt": now()}
+    # Simpan nama file relatif agar database tetap valid saat pindah server/folder.
+    record = {"id": file_id, "userId": user["id"], "localPath": local_file_path.name, "storagePath": cloud_path, "contentType": file.content_type, "originalFilename": file.filename, "size": len(data), "createdAt": now()}
     await db.files.insert_one(record)
     return {"id": record["id"], "url": f"/api/uploads/{record['id']}", "contentType": file.content_type}
 
@@ -325,8 +413,15 @@ async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
 async def download_file(file_id: str):
     rec = await db.files.find_one({"id": file_id}, {"_id": 0})
     if not rec: raise HTTPException(404, "File tidak ditemukan")
-    if rec.get("localPath") and os.path.exists(rec["localPath"]):
-        with open(rec["localPath"], "rb") as f:
+    stored_path = rec.get("localPath", "")
+    local_path = Path(stored_path)
+    if not local_path.is_absolute():
+        local_path = UPLOAD_DIR / local_path.name
+    elif not local_path.exists():
+        # Pulihkan record lama yang menyimpan absolute path komputer sebelumnya.
+        local_path = UPLOAD_DIR / local_path.name
+    if stored_path and local_path.exists():
+        with open(local_path, "rb") as f:
             return Response(content=f.read(), media_type=rec["contentType"])
     try:
         key = init_storage()
@@ -346,6 +441,29 @@ async def public_settings():
     s = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
     return {"applicationName": s.get("applicationName"), "supportEmail": s.get("supportEmail"), "adminWhatsapp": s.get("adminWhatsapp"), "bankName": s.get("bankName"), "accountName": s.get("accountName"), "accountNumber": s.get("accountNumber"), "paymentInstructions": s.get("paymentInstructions"), "additionalWebsitePrice": s.get("additionalWebsitePrice", ADDITIONAL_WEBSITE_PRICE)}
 
+@api.get("/showcase/logo/{slug}")
+async def showcase_logo(slug: str):
+    """Logo SVG ringan untuk setiap website contoh; dapat dipakai seperti file gambar."""
+    marks = {
+        "demo-kopi-senja": ("KS", "M24 42h48v28H24z M31 33a17 17 0 0 1 34 0 M72 47h8a10 10 0 0 1 0 18h-8"),
+        "demo-rumah-roti": ("RR", "M22 61c0-21 52-21 52 0v12H22z M34 42c4 8 4 16 0 22 M48 39c4 9 4 18 0 25 M62 42c4 8 4 16 0 22"),
+        "demo-nusa-craft": ("NC", "M25 29h46v46H25z M25 44h46M40 29v46M56 29v46"),
+        "demo-barber-co": ("BC", "M29 30l38 38M67 30L29 68M29 30a8 8 0 1 0 0 .1M67 68a8 8 0 1 0 0 .1"),
+        "demo-sari-beauty": ("SB", "M48 24c7 13 18 17 18 28S55 67 48 76C41 67 30 63 30 52s11-15 18-28z M26 30l4 4m40-4-4 4"),
+        "demo-warung-sundari": ("WS", "M22 57h52v16H22z M27 52c8-14 30-14 38 0 M35 29c-7 8 3 10-3 19m16-19c-7 8 3 10-3 19m16-19c-7 8 3 10-3 19"),
+    }
+    spec = next((item for item in SHOWCASE_SITES if item["slug"] == slug), None)
+    if not spec or slug not in marks:
+        raise HTTPException(404, "Logo contoh tidak ditemukan")
+    initials, path = marks[slug]
+    primary = spec["primary"]
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="{spec['name']}">
+      <rect width="96" height="96" rx="24" fill="{primary}"/>
+      <path d="{path}" fill="none" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="48" y="90" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="9" font-weight="700">{initials}</text>
+    </svg>'''
+    return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
 @api.post("/auth/register")
 async def register(data: RegisterInput, response: Response, request: Request):
     email = data.email.lower().strip()
@@ -360,9 +478,8 @@ async def register(data: RegisterInput, response: Response, request: Request):
         is_verified = bool(rec and rec.get("verified") and rec.get("expiresAt", "") >= now())
         if not is_verified:
             raise HTTPException(400, "Nomor WhatsApp belum diverifikasi. Masukkan kode verifikasi terlebih dahulu.")
-    start = datetime.now(timezone.utc)
-    end = start + timedelta(days=TRIAL_DAYS)
-    user = {"id": uid(), "name": data.name.strip(), "email": email, "password_hash": hash_password(data.password), "role": "USER", "accountStatus": "ACTIVE", "subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": start.isoformat(), "trialEndDate": end.isoformat(), "planSlug": "trial", "websiteQuota": 1, "additionalWebsiteQuota": 0, "whatsapp": phone, "phone": phone, "createdAt": now()}
+    # The 30-day period begins only when the owner creates their first website.
+    user = {"id": uid(), "name": data.name.strip(), "email": email, "password_hash": hash_password(data.password), "role": "USER", "accountStatus": "ACTIVE", "subscriptionStatus": "TRIAL_PENDING", "trialStartDate": "", "trialEndDate": "", "planSlug": "trial", "websiteQuota": 1, "additionalWebsiteQuota": 0, "whatsapp": phone, "phone": phone, "createdAt": now()}
     try:
 
         await db.users.insert_one(user)
@@ -371,10 +488,10 @@ async def register(data: RegisterInput, response: Response, request: Request):
 
         raise HTTPException(409, "Nomor WhatsApp sudah terdaftar pada akun lain")
 
-    await notify(user["id"], "Selamat datang di UsahaKu", "Trial gratis 30 hari kamu sudah aktif. Yuk buat website pertamamu!")
+    await notify(user["id"], "Selamat datang di UsahaKu", "Buat website pertamamu untuk memulai masa Gratis 30 hari.")
     if phone:
         await db.wa_verifications.delete_one({"phone": phone})
-    response.set_cookie("access_token", token(user["id"], days=AUTH_COOKIE_DAYS), httponly=True, samesite="lax", max_age=AUTH_COOKIE_DAYS*86400, secure=(request.url.scheme == "https"))
+    set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS))
     return public(user)
 
 @api.post("/auth/send-wa-code")
@@ -423,12 +540,15 @@ async def login(data: AuthInput, response: Response, request: Request):
     if user.get("accountStatus") == "SUSPENDED":
         raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin UsahaKu.")
     await refresh_status(user)
-    response.set_cookie("access_token", token(user["id"], days=AUTH_COOKIE_DAYS), httponly=True, samesite="lax", max_age=AUTH_COOKIE_DAYS*86400, secure=(request.url.scheme == "https"))
+    set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS))
     return public(user)
 
 @api.post("/auth/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token")
+async def logout(response: Response, request: Request):
+    response.delete_cookie(
+        "access_token", path="/", domain=COOKIE_DOMAIN,
+        secure=request_is_secure(request), samesite=COOKIE_SAMESITE,
+    )
     return {"ok": True}
 
 @api.get("/auth/me")
@@ -485,10 +605,25 @@ async def create_website(data: WebsiteInput, user=Depends(current_user)):
     q = quota_for(user)
     if count >= q:
         raise HTTPException(403, "Limit website Anda sudah tercapai. Silakan upgrade paket atau tambah kuota website.")
+    if user.get("subscriptionStatus") == "TRIAL_PENDING" and count == 0:
+        trial_start = datetime.now(timezone.utc)
+        trial_end = trial_start + timedelta(days=TRIAL_DAYS)
+        await db.users.update_one(
+            {"id": user["id"], "subscriptionStatus": "TRIAL_PENDING"},
+            {"$set": {"subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": trial_start.isoformat(), "trialEndDate": trial_end.isoformat()}},
+        )
+        user.update({"subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": trial_start.isoformat(), "trialEndDate": trial_end.isoformat()})
+        await notify(user["id"], "Masa Gratis 30 hari dimulai", "Website pertama berhasil dibuat. Masa Gratis Anda aktif selama 30 hari.")
+    requested_slug = slugify(data.storeSlug or data.businessName)
+    duplicate = await db.websites.find_one({"$or": [{"slug": requested_slug}, {"storeSlug": requested_slug}]}, {"_id": 0})
+    if duplicate:
+        raise HTTPException(409, "Alamat toko sudah digunakan. Silakan pilih alamat lain.")
     t_style = data.templateStyle or "modern"
     t_config = data.themeConfig or {"primary": "#16A34A", "accent": "#14532D", "style": t_style}
     if "style" not in t_config: t_config["style"] = t_style
-    website = {"id": uid(), "userId": user["id"], **data.model_dump(), "status": "DRAFT", "slug": "", "templateStyle": t_style, "themeConfig": t_config, "aiGeneratedContent": {}, "businessHours": [], "sectionVisibility": dict(DEFAULT_SECTION_VISIBILITY), "contactCards": dict(DEFAULT_CONTACT_CARDS), "mapsUrl": "", "createdAt": now(), "updatedAt": now()}
+    website_data = data.model_dump()
+    website_data["storeSlug"] = requested_slug
+    website = {"id": uid(), "userId": user["id"], **website_data, "status": "DRAFT", "slug": "", "templateStyle": t_style, "themeConfig": t_config, "aiGeneratedContent": {}, "businessHours": [], "sectionVisibility": dict(DEFAULT_SECTION_VISIBILITY), "contactCards": dict(DEFAULT_CONTACT_CARDS), "mapsUrl": "", "createdAt": now(), "updatedAt": now()}
     await db.websites.insert_one(website)
     return public(website)
 
@@ -503,10 +638,35 @@ async def get_website(site_id: str, user=Depends(current_user)):
     site["products"] = await db.products.find({"websiteId": site_id}, {"_id": 0}).sort("sortOrder", 1).to_list(200)
     return site
 
+@api.get("/store-address/check")
+async def check_store_address(slug: str, siteId: str = "", user=Depends(current_user)):
+    normalized = slugify(slug)
+    if not slug.strip():
+        return {"slug": "", "available": False}
+    query = {"$or": [{"slug": normalized}, {"storeSlug": normalized}]}
+    if siteId:
+        query["id"] = {"$ne": siteId}
+    duplicate = await db.websites.find_one(query, {"_id": 0, "id": 1})
+    return {"slug": normalized, "available": not bool(duplicate)}
+
 @api.put("/websites/{site_id}")
 async def update_website(site_id: str, data: WebsiteInput, user=Depends(current_user)):
-    await owned_site(site_id, user)
-    await db.websites.update_one({"id": site_id}, {"$set": {**data.model_dump(), "updatedAt": now()}})
+    site = await owned_site(site_id, user)
+    updates = data.model_dump()
+    requested_slug = slugify(updates.get("storeSlug") or site.get("storeSlug") or site.get("slug") or site["businessName"])
+    current_slug = site.get("storeSlug") or site.get("slug") or slugify(site["businessName"])
+    is_free = user.get("planSlug") == "trial"
+    if is_free:
+        # Nama usaha adalah identitas permanen untuk website Gratis.
+        updates["businessName"] = site["businessName"]
+        if site.get("status") == "PUBLISHED" and requested_slug != current_slug:
+            raise HTTPException(403, "Alamat toko paket Gratis tidak dapat diubah setelah website dipublikasikan.")
+    if requested_slug != current_slug:
+        duplicate = await db.websites.find_one({"id": {"$ne": site_id}, "$or": [{"slug": requested_slug}, {"storeSlug": requested_slug}]}, {"_id": 0})
+        if duplicate:
+            raise HTTPException(409, "Alamat toko sudah digunakan. Silakan pilih alamat lain.")
+    updates["storeSlug"] = current_slug if (is_free and site.get("status") == "PUBLISHED") else requested_slug
+    await db.websites.update_one({"id": site_id}, {"$set": {**updates, "updatedAt": now()}})
     return await get_website(site_id, user)
 
 @api.put("/websites/{site_id}/theme")
@@ -536,6 +696,9 @@ async def update_sections(site_id: str, data: SectionsConfigInput, user=Depends(
         updates["contactCards"] = {**DEFAULT_CONTACT_CARDS, **data.contactCards.model_dump(exclude_none=True)}
     if data.mapsUrl is not None: updates["mapsUrl"] = (data.mapsUrl or "").strip()
     ai = {**(site.get("aiGeneratedContent") or {})}
+    if data.heroTitle is not None: ai["heroTitle"] = data.heroTitle.strip()
+    if data.heroSubtitle is not None: ai["heroSubtitle"] = data.heroSubtitle.strip()
+    if data.about is not None: ai["about"] = data.about.strip()
     if data.highlights is not None: ai["highlights"] = [h.model_dump() for h in data.highlights][:6]
     if data.testimonials is not None: ai["testimonials"] = [t.model_dump() for t in data.testimonials][:9]
     if data.faq is not None: ai["faq"] = [f.model_dump() for f in data.faq][:10]
@@ -547,6 +710,8 @@ async def update_sections(site_id: str, data: SectionsConfigInput, user=Depends(
 @api.delete("/websites/{site_id}")
 async def delete_website(site_id: str, user=Depends(current_user)):
     site = await owned_site(site_id, user)
+    if user.get("planSlug") == "trial":
+        raise HTTPException(403, "Website paket Gratis tidak dapat dihapus. Upgrade paket untuk menghapus website.")
     await db.products.delete_many({"websiteId": site_id})
     await db.websites.delete_one({"id": site_id})
     return {"ok": True}
@@ -555,7 +720,11 @@ async def delete_website(site_id: str, user=Depends(current_user)):
 async def add_product(site_id: str, data: ProductInput, user=Depends(current_user)):
     await owned_site(site_id, user)
     if len(data.images) > 3: raise HTTPException(400, "Maksimal 3 gambar per produk")
-    item = {"id": uid(), "websiteId": site_id, **data.model_dump(), "sortOrder": await db.products.count_documents({"websiteId": site_id}), "createdAt": now()}
+    product_count = await db.products.count_documents({"websiteId": site_id})
+    product_limit = product_limit_for(user)
+    if product_limit is not None and product_count >= product_limit:
+        raise HTTPException(403, "Paket Gratis maksimal 3 produk per website. Upgrade paket untuk katalog tanpa batas.")
+    item = {"id": uid(), "websiteId": site_id, **data.model_dump(), "sortOrder": product_count, "createdAt": now()}
     await db.products.insert_one(item)
     return public(item)
 
@@ -901,7 +1070,15 @@ async def generate(site_id: str, user=Depends(current_user)):
     except Exception as exc:
         log.exception("AI generation failed")
         raise HTTPException(502, "AI belum dapat membuat website. Silakan coba lagi.") from exc
-    await db.websites.update_one({"id": site_id}, {"$set": {"aiGeneratedContent": content, "themeConfig": {"primary": content.get("primaryColor", "#16A34A"), "accent": content.get("accentColor", "#14532D"), "style": content.get("style", "modern")}, "updatedAt": now()}})
+    # Tema dipilih pengguna pada wizard harus selalu menang atas rekomendasi AI.
+    # AI hanya menyediakan warna fallback untuk website lama yang belum memiliki tema.
+    selected_theme = site.get("themeConfig") or {}
+    theme = {
+        "primary": selected_theme.get("primary") or content.get("primaryColor", "#16A34A"),
+        "accent": selected_theme.get("accent") or content.get("accentColor", "#14532D"),
+        "style": site.get("templateStyle") or selected_theme.get("style") or content.get("style", "modern"),
+    }
+    await db.websites.update_one({"id": site_id}, {"$set": {"aiGeneratedContent": content, "themeConfig": theme, "updatedAt": now()}})
     return await get_website(site_id, user)
 
 @api.post("/websites/{site_id}/ai-edit")
@@ -916,7 +1093,9 @@ async def ai_edit(site_id: str, data: AIEditInput, user=Depends(current_user)):
     except Exception as exc:
         log.exception("AI edit failed")
         raise HTTPException(502, "AI belum dapat memperbarui website. Silakan coba lagi.") from exc
-    await db.websites.update_one({"id": site_id}, {"$set": {"aiGeneratedContent": content, "themeConfig.primary": content.get("primaryColor", "#16A34A"), "themeConfig.accent": content.get("accentColor", "#14532D"), "themeConfig.style": content.get("style", "modern"), "updatedAt": now()}})
+    # Perintah AI dapat mengubah konten, tetapi tidak boleh diam-diam mengganti
+    # palet dan template yang telah dipilih pemilik website.
+    await db.websites.update_one({"id": site_id}, {"$set": {"aiGeneratedContent": content, "updatedAt": now()}})
     return await get_website(site_id, user)
 
 @api.post("/websites/{site_id}/publish")
@@ -925,12 +1104,10 @@ async def publish(site_id: str, user=Depends(current_user)):
     if not is_owner_active(user):
         raise HTTPException(403, "Website hanya dapat dipublikasikan saat berlangganan aktif.")
     site = await owned_site(site_id, user)
-    slug = site.get("slug") or slugify(site["businessName"])
-    base = slug
-    n = 1
-    while await db.websites.find_one({"slug": slug, "id": {"$ne": site_id}}):
-        n += 1
-        slug = f"{base}-{n}"
+    slug = site.get("slug") or site.get("storeSlug") or slugify(site["businessName"])
+    duplicate = await db.websites.find_one({"slug": slug, "id": {"$ne": site_id}}, {"_id": 0})
+    if duplicate:
+        raise HTTPException(409, "Alamat toko sudah digunakan. Silakan ubah alamat toko sebelum dipublikasikan.")
     await db.websites.update_one({"id": site_id}, {"$set": {"slug": slug, "status": "PUBLISHED", "publishedAt": now(), "updatedAt": now()}})
     return {"slug": slug, "status": "PUBLISHED"}
 
@@ -1379,7 +1556,7 @@ async def website_analytics(site_id: str, user=Depends(current_user)):
 async def demo_seed(user=Depends(current_user)):
     user = await refresh_status(user)
     if not is_owner_active(user):
-        raise HTTPException(403, "Aktifkan trial atau berlangganan untuk memakai demo.")
+        raise HTTPException(403, "Aktifkan paket atau berlangganan untuk memakai demo.")
     count = await db.websites.count_documents({"userId": user["id"]})
     q = quota_for(user)
     if count >= q:
@@ -1422,6 +1599,9 @@ class WaContactUpdateInput(BaseModel):
     websiteName: Optional[str] = None
     categories: Optional[List[str]] = None
     notes: Optional[str] = None
+
+class WaContactSendInput(BaseModel):
+    text: str
 
 # ---------- Helper buku kontak WA (auto-capture & enrich) ----------
 
@@ -1566,6 +1746,20 @@ async def wa_contact_delete(cid: str, admin=Depends(admin_user)):
     if r.deleted_count == 0:
         raise HTTPException(404, "Kontak tidak ditemukan")
     return {"ok": True}
+
+@api.post("/admin/wa/contacts/{cid}/send")
+async def wa_contact_send(cid: str, data: WaContactSendInput, admin=Depends(admin_user)):
+    """Send one outreach message; follow-up is intentionally handled in WhatsApp by the admin."""
+    text = data.text.strip()
+    if not text:
+        raise HTTPException(400, "Pesan tidak boleh kosong")
+    contact = await db.wa_contacts.find_one({"id": cid}, {"_id": 0})
+    if not contact:
+        raise HTTPException(404, "Kontak tidak ditemukan")
+    res = await wa_service.send_text(db, contact["phone"], text, event="wa_contact_manual", ref_id=cid)
+    await db.wa_contacts.update_one({"id": cid}, {"$set": {"lastContactAt": now()}})
+    await log_activity(admin["id"], "wa_contact_manual_send", None, cid, "")
+    return {"ok": res.get("ok", False), "error": res.get("error", "")}
 
 # ---------- Broadcast: dukung filter kategori ----------
 @api.post("/admin/wa/broadcast")
@@ -1720,29 +1914,9 @@ async def wa_webhook(request: Request):
             return {"ok": True, "duplicate": True}
         raise
 
-    # Balasan otomatis saat mode AUTO (global & per-chat)
-    cfg = await db.settings.find_one({"id": "wa_config"}, {"_id": 0}) or {}
-    global_auto = cfg.get("globalAuto", True)
+    # Inbox tidak digunakan: semua tindak lanjut pelanggan dilakukan manual di aplikasi WhatsApp admin.
+    # Pesan masuk tetap dapat dipakai untuk memperbarui buku kontak, tetapi tidak pernah dibalas otomatis.
     reply_sent = False
-    if conv.get("mode", "AUTO") == "AUTO" and global_auto and msg["text"].strip():
-        reply = render_template("autoreply", nama=msg["push"] or "kak")
-        res = await wa_service.send_text(db, msg["phone"], reply, event="wa_autoreply",
-                                         ref_id=conv["id"], record=False)
-        out = {"id": uuid.uuid4().hex, "conversationId": conv["id"], "phone": msg["phone"],
-               "direction": "OUT", "body": reply, "type": "text",
-               "status": "sent" if res.get("ok") else "failed",
-               "error": res.get("error", ""), "isBot": True,
-               "gowaMessageId": "", "createdAt": now()}
-        await db.wa_messages.insert_one(out)
-        if res.get("ok"):
-            await db.wa_conversations.update_one({"id": conv["id"]},
-                                                 {"$set": {"lastBotReplyAt": now()}})
-            reply_sent = True
-        else:
-            await db.wa_logs.insert_one({"id": uuid.uuid4().hex, "event": "wa_autoreply_failed",
-                                         "target": msg["phone"], "message": reply[:500],
-                                         "status": "failed", "error": res.get("error", "")[:300],
-                                         "refId": conv["id"], "direction": "OUT", "createdAt": now()})
 
     # ===== Auto-capture buku kontak WA (nama dari push_name, web & kategori dari data bisnis) =====
     async def _capture_contact():
@@ -1893,7 +2067,16 @@ async def check_wa(payload: dict):
     return {"ok": True}
 
 app.include_router(api)
-app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origin_regex=".*", allow_methods=["*"], allow_headers=["*"])
+cors_origins = [origin.strip().rstrip("/") for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin.strip()]
+cors_origin_regex = (os.environ.get("CORS_ORIGIN_REGEX") or r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$").strip() or None
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def startup():
@@ -1947,6 +2130,9 @@ async def startup():
         if not existing:
             await db.plans.insert_one({**plan, "createdAt": now()})
 
+    # Nama paket gratis lama diperbarui agar istilah trial tidak muncul lagi di UI.
+    await db.plans.update_many({"slug": "trial", "name": "Trial Gratis"}, {"$set": {"name": "Gratis"}})
+
     # Migrate old user planSlug values
     try:
         await db.users.update_many({"planSlug": "premium-1"}, {"$set": {"planSlug": "basic"}})
@@ -1972,6 +2158,9 @@ async def startup():
             "websiteQuota": 999,
             "createdAt": now()
         })
+
+    platform_settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
+    await ensure_showcase_sites(platform_settings.get("adminWhatsapp", DEFAULT_SETTINGS["adminWhatsapp"]))
 
 @app.on_event("shutdown")
 async def shutdown():

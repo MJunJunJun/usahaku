@@ -89,7 +89,11 @@ credentials.json
 
 # User uploads (runtime data)
 backend/uploads/
+backend/.runtime/
 gowa-data/
 backend/server.py.bak
+*-run.log
+*-run.err
+frontend/public/assets/templates/covers/*/*.png
 patch_docker_compose.py
 nginx.conf

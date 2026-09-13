@@ -27,7 +27,10 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { money } from "../lib/api";
+import { money, resolveMediaUrl } from "../lib/api";
+import { WebsiteTemplateLayout } from "./WebsiteTemplateLayouts";
+import { APP_NAME } from "../lib/config";
+import { getCoverVisualStyle } from "../lib/imageTemplates";
 
 const ICON_MAP = {
   ShieldCheck: ShieldCheck,
@@ -65,12 +68,11 @@ const getCategoryCover = (category, name) => {
   return "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=1200&auto=format&fit=crop";
 };
 
-export default function PublicWebsiteView({ data, embedded = false }) {
+export default function PublicWebsiteView({ data, embedded = false, device = "desktop" }) {
   const c = data.aiGeneratedContent || {};
   const primary = data.themeConfig?.primary || c.primaryColor || "#16A34A";
   const accent = data.themeConfig?.accent || c.accentColor || "#14532D";
-  const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
-  const fixUrl = (u) => (!u ? "" : u.startsWith("http") ? u : backendUrl + u);
+  const fixUrl = resolveMediaUrl;
 
   const [activeFaq, setActiveFaq] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("ALL");
@@ -177,10 +179,30 @@ export default function PublicWebsiteView({ data, embedded = false }) {
     `https://maps.google.com/?q=${encodeURIComponent([data.address, data.city, data.province].filter(Boolean).join(", "))}`;
 
   const templateStyle = data.templateStyle || data.themeConfig?.style || c.style || "modern";
+  const coverStyle = getCoverVisualStyle(data.themeConfig?.coverVariant);
+
+  // Modern memakai halaman utama lengkap. Empat template lain sengaja memiliki
+  // markup sendiri agar pilihan template mengubah komposisi website, bukan warna saja.
+  if (["warm", "bold", "minimal", "playful"].includes(templateStyle)) {
+    return <WebsiteTemplateLayout
+      template={templateStyle}
+      embedded={embedded}
+      device={device}
+      data={data}
+      c={c}
+      bgUrl={bgUrl}
+      coverStyle={coverStyle}
+      products={products}
+      fixUrl={fixUrl}
+      wa={wa}
+      highlights={showHighlights ? highlights : []}
+      testimonials={showTestimonials ? testimonials : []}
+    />;
+  }
 
   return (
     <div
-      className={`public-site ${embedded ? "embedded" : ""} template-${templateStyle}`}
+      className={`public-site ${embedded ? "embedded" : ""} preview-${device} template-${templateStyle}`}
       style={{ "--pri": primary, "--acc": accent }}
     >
       {/* 1. TOPBAR / NAVBAR */}
@@ -226,6 +248,8 @@ export default function PublicWebsiteView({ data, embedded = false }) {
         className="public-hero"
         style={{
           backgroundImage: `linear-gradient(135deg, ${accent}f5 0%, ${primary}cc 55%, rgba(15, 23, 42, 0.85) 100%), url(${bgUrl})`,
+          backgroundPosition: coverStyle.backgroundPosition,
+          backgroundSize: coverStyle.backgroundSize,
         }}
       >
         <div className="public-hero-inner">
@@ -700,7 +724,7 @@ export default function PublicWebsiteView({ data, embedded = false }) {
             </p>
           </div>
           <div className="footer-credit">
-            <span>Dibuat dengan <a href="/" target="_blank" rel="noreferrer">UsahaKu</a> • Platform Website AI UMKM Indonesia</span>
+            <span>Dibuat dengan <a href="/" target="_blank" rel="noreferrer">{APP_NAME}</a> • Platform Website AI UMKM Indonesia</span>
           </div>
         </div>
       </footer>

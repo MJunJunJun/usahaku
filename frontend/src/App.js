@@ -10,7 +10,7 @@ import { Subscription, PaymentFlow, PaymentDetail } from "./pages/Subscription";
 import { PublicRoute, OwnerAccess } from "./pages/PublicSite";
 import { AdminOverview, AdminUsers, AdminUserDetail, AdminPayments, AdminPaymentDetail, AdminPlans, AdminActivity, AdminSettings, AdminWebsites } from "./pages/Admin";
 import { UserCoupons, AdminCoupons } from "./pages/Coupons";
-import { WaCenter, WaInbox, WaContacts } from "./pages/WaAdmin";
+import { WaCenter, WaContacts } from "./pages/WaAdmin";
 
 export default function App() {
   return (
@@ -45,7 +45,6 @@ export default function App() {
         <Route path="/admin/payment-requests/:id" element={<AdminShell><AdminPaymentDetail /></AdminShell>} />
         <Route path="/admin/plans" element={<AdminShell><AdminPlans /></AdminShell>} />
         <Route path="/admin/coupons" element={<AdminShell><AdminCoupons /></AdminShell>} />
-        <Route path="/admin/wa-chat" element={<AdminShell><WaInbox /></AdminShell>} />
         <Route path="/admin/wa-contacts" element={<AdminShell><WaContacts /></AdminShell>} />
         <Route path="/admin/whatsapp" element={<AdminShell><WaCenter /></AdminShell>} />
         <Route path="/admin/activity-logs" element={<AdminShell><AdminActivity /></AdminShell>} />

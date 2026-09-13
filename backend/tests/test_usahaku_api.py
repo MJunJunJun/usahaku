@@ -42,8 +42,8 @@ def test_register_trial_cookie_and_invalid_login(client):
     })
     assert registered.status_code == 200
     data = registered.json()
-    assert data["subscriptionStatus"] == "TRIAL_ACTIVE"
-    assert data["trialStartDate"] and data["trialEndDate"]
+    assert data["subscriptionStatus"] == "TRIAL_PENDING"
+    assert not data["trialStartDate"] and not data["trialEndDate"]
     assert "password" not in data and "password_hash" not in data
     assert "access_token" in client.cookies
     assert client.get(f"{BASE_URL}/api/auth/me").json()["email"] == email
@@ -55,6 +55,9 @@ def test_trial_one_website_product_persistence_and_image_limit(trial_client):
     payload = {"businessName": "TEST Kopi", "category": "Coffee Shop", "description": "Kopi lokal"}
     created = trial_client.post(f"{BASE_URL}/api/websites", json=payload)
     assert created.status_code == 200, created.text
+    owner = trial_client.get(f"{BASE_URL}/api/auth/me").json()
+    assert owner["subscriptionStatus"] == "TRIAL_ACTIVE"
+    assert owner["trialStartDate"] and owner["trialEndDate"]
     website = created.json()
     fetched = trial_client.get(f"{BASE_URL}/api/websites/{website['id']}")
     assert fetched.status_code == 200 and fetched.json()["businessName"] == "TEST Kopi"

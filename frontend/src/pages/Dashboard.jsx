@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile } from "lucide-react";
-import { api, errorText, uploadFile, daysUntil, money, formatDate } from "../lib/api";
+import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
 import PublicWebsiteView from "./PublicWebsiteView";
-import { SectionForm, makeDefaultSections } from "./Sections";
+import { SectionForm, makeRandomSections } from "./Sections";
+import { APP_NAME } from "../lib/config";
+import { coverPatchFromTemplate, getContentTemplates, pickRandomContentTemplate } from "../lib/contentTemplates";
+import { getCoverTemplates, getLogoTemplates, pickRandomImageTemplates } from "../lib/imageTemplates";
 
 const Stat = ({ label, value, icon }) => (
   <div className="stat"><span>{icon}</span><div><b>{value}</b><small>{label}</small></div></div>
@@ -15,7 +18,7 @@ const WebsiteCard = ({ w }) => (
   <Link data-testid={`website-card-${w.id}`} className="website-card" to={`/dashboard/websites/${w.id}`}>
     <div className="website-thumb" style={{ background: w.themeConfig?.primary ? `linear-gradient(135deg, ${w.themeConfig.primary}, #14532d)` : undefined }}>
       <div className="thumb-nav"><b>{w.businessName}</b><i /></div>
-      <div className="thumb-hero" style={{ backgroundImage: `url(${w.coverImageUrl ? (w.coverImageUrl.startsWith("http") ? w.coverImageUrl : (process.env.REACT_APP_BACKEND_URL + w.coverImageUrl)) : "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=500&auto=format&fit=crop"})` }} />
+      <div className="thumb-hero" style={{ backgroundImage: `url(${resolveMediaUrl(w.coverImageUrl) || "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=500&auto=format&fit=crop"})` }} />
       <div className="thumb-bottom"><span>{w.category}</span><span>{w.productCount || 0} produk</span></div>
     </div>
     <div className="website-info">
@@ -25,7 +28,7 @@ const WebsiteCard = ({ w }) => (
   </Link>
 );
 
-const planName = (slug) => ({ trial: "Trial Gratis", basic: "Basic", premium: "Premium", platinum: "Platinum" })[slug] || "Trial";
+const planName = (slug) => ({ trial: "Gratis", basic: "Basic", premium: "Premium", platinum: "Platinum" })[slug] || "Gratis";
 
 const EmptyState = () => {
   const nav = useNavigate();
@@ -56,29 +59,6 @@ const EmptyState = () => {
   );
 };
 
-const TrialBanner = ({ user, websiteCount }) => {
-  const status = user.subscriptionStatus;
-  if (status === "ACTIVE") return null;
-  // Don't show trial banner if user hasn't created any website yet (avoid urgency for brand-new users)
-  if (status === "TRIAL_ACTIVE" && websiteCount === 0) return null;
-  const trial = daysUntil(user.trialEndDate);
-  let label, sub, variant = "";
-  if (status === "TRIAL_ACTIVE") {
-    if (trial <= 1) { label = "Trial kamu berakhir besok."; sub = "Pilih paket sebelum website berhenti tampil."; variant = "warning"; }
-    else if (trial <= 3) { label = `Trial gratis tersisa ${trial} hari.`; sub = "Waktunya pilih paket agar bisnis tetap tampil online."; variant = "warning"; }
-    else if (trial <= 7) { label = `Trial gratis tersisa ${trial} hari.`; sub = "Nikmati semua fitur UsahaKu selama trial."; variant = "info"; }
-    else { label = `Trial gratis aktif · ${trial} hari tersisa.`; sub = "Nikmati semua fitur UsahaKu tanpa batas."; variant = "info"; }
-  } else if (status === "TRIAL_EXPIRED") { label = "Trial gratis 30 hari kamu telah berakhir."; sub = "Berlangganan untuk melanjutkan penggunaan UsahaKu."; variant = "expired"; }
-  else if (status === "EXPIRED") { label = "Berlangganan kamu telah berakhir."; sub = "Perpanjang paket untuk mengaktifkan kembali website."; variant = "expired"; }
-  return (
-    <div data-testid="trial-banner" className={`trial-banner ${variant}`}>
-      <div className="trial-icon"><Sparkles size={19} /></div>
-      <div><b>{label}</b><span>{sub}</span></div>
-      <Link data-testid="trial-upgrade-button" to="/dashboard/subscription">Lihat paket <ArrowRight size={15} /></Link>
-    </div>
-  );
-};
-
 export function Dashboard() {
   const [data, setData] = useState(null);
   const load = () => api.get("/dashboard").then(r => setData(r.data));
@@ -93,9 +73,8 @@ export function Dashboard() {
           <h1>Selamat datang, {u.name.split(" ")[0]} <span>👋</span></h1>
           <p>Kelola semua website bisnis kamu dari satu tempat.</p>
         </div>
-        <Link data-testid="dashboard-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />Buat website</Link>
+        <Link data-testid="dashboard-create-button" className="btn btn-primary" to="/dashboard/websites/create"><Plus size={17} />{u.subscriptionStatus === "TRIAL_PENDING" ? "Buat website Gratis" : "Buat website"}</Link>
       </div>
-      <TrialBanner user={u} websiteCount={data.stats.total} />
       <div className="stat-grid">
         <Stat label="Total website" value={data.stats.total} icon="◈" />
         <Stat label="Sudah publish" value={data.stats.published} icon="↗" />
@@ -117,7 +96,9 @@ export function Dashboard() {
         <div className="sub-summary">
           <div><small>PAKET</small><b>{planName(u.planSlug)}</b></div>
           <div><small>WEBSITE</small><b>{data.stats.total} / {data.quota}</b></div>
-          <div><small>{u.subscriptionStatus === "TRIAL_ACTIVE" ? "TRIAL BERAKHIR" : "BERAKHIR"}</small><b>{formatDate(u.subscriptionStatus === "TRIAL_ACTIVE" ? u.trialEndDate : u.subscriptionExpiryDate)}</b></div>
+          {u.subscriptionStatus === "TRIAL_PENDING" && <div><small>KUOTA GRATIS</small><b>1 website</b></div>}
+          {u.subscriptionStatus === "TRIAL_ACTIVE" && <div><small>BERAKHIR</small><b>{formatDate(u.trialEndDate)}</b></div>}
+          {u.subscriptionStatus !== "TRIAL_PENDING" && u.subscriptionStatus !== "TRIAL_ACTIVE" && <div><small>BERAKHIR</small><b>{formatDate(u.subscriptionExpiryDate)}</b></div>}
           <div><small>STATUS</small><StatusBadge status={u.subscriptionStatus} /></div>
         </div>
       </section>
@@ -157,24 +138,92 @@ export function WebsiteList() {
 }
 
 const CATEGORIES = ["Coffee Shop", "Restaurant", "Bakery", "Fashion", "Beauty", "Barbershop", "Retail", "Jasa", "Pendidikan", "Lainnya"];
+const LOGO_COLORS = [
+  "#14532d", "#0f766e", "#1d4ed8", "#38bdf8", "#06b6d4", "#1877f2",
+  "#7e22ce", "#be185d", "#dc2626", "#eab308", "#c2410c", "#6b7280", "#1f2937",
+];
 
 export function CreateWebsite() {
   const nav = useNavigate();
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ businessName: "", category: "Coffee Shop", description: "", logoUrl: "", coverImageUrl: "", whatsapp: "", phone: "", email: "", instagram: "", facebook: "", tiktok: "", address: "", city: "", province: "" });
+  const [initialContentTemplate] = useState(() => pickRandomContentTemplate("Coffee Shop"));
+  const [initialImages] = useState(() => pickRandomImageTemplates("Coffee Shop"));
+  const [initialVisual] = useState(() => ({
+    template: WEBSITE_TEMPLATES[Math.floor(Math.random() * WEBSITE_TEMPLATES.length)],
+    palette: COLOR_PALETTES[Math.floor(Math.random() * COLOR_PALETTES.length)],
+  }));
+  const [contentTemplateId, setContentTemplateId] = useState(initialContentTemplate.id);
+  const [logoTemplateId, setLogoTemplateId] = useState(initialImages.logo.id);
+  const [logoColor, setLogoColor] = useState("#14532d");
+  const [coverTemplateId, setCoverTemplateId] = useState(initialImages.cover.id);
+  const [form, setForm] = useState({ businessName: "", storeSlug: "", category: "Coffee Shop", description: initialContentTemplate.description, logoUrl: initialImages.logo.url, coverImageUrl: initialImages.cover.url, whatsapp: "", phone: "", email: "", instagram: "", facebook: "", tiktok: "", address: "", city: "", province: "" });
   const [products, setProducts] = useState([{ name: "", description: "", price: "", images: [] }]);
-  const [sections, setSections] = useState(makeDefaultSections());
-  const [selectedTemplate, setSelectedTemplate] = useState("modern");
-  const [selectedPalette, setSelectedPalette] = useState("emerald");
-  const [primaryColor, setPrimaryColor] = useState("#16A34A");
-  const [accentColor, setAccentColor] = useState("#14532D");
+  const [sections, setSections] = useState(() => ({ ...makeRandomSections({ category: "Coffee Shop" }), ...coverPatchFromTemplate(initialContentTemplate) }));
+  const [selectedTemplate, setSelectedTemplate] = useState(initialVisual.template.id);
+  const [selectedPalette, setSelectedPalette] = useState(initialVisual.palette.id);
+  const [primaryColor, setPrimaryColor] = useState(initialVisual.palette.primary);
+  const [accentColor, setAccentColor] = useState(initialVisual.palette.accent);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [quotaInfo, setQuotaInfo] = useState(null);
-  useEffect(() => { api.get("/dashboard").then(r => setQuotaInfo({ used: r.data.stats.total, quota: r.data.quota })); }, []);
+  const [slugState, setSlugState] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
+  useEffect(() => { api.get("/dashboard").then(r => setQuotaInfo({ used: r.data.stats.total, quota: r.data.quota, isFreePlan: r.data.user?.planSlug === "trial" })); }, []);
   const quotaFull = quotaInfo && quotaInfo.used >= quotaInfo.quota;
-  const set = (key, val) => setForm({ ...form, [key]: val });
-  const setSectionCfg = (patch) => setSections({ ...sections, ...patch });
+  const productLimit = quotaInfo?.isFreePlan ? 3 : null;
+  const set = (key, val) => setForm((current) => ({ ...current, [key]: val }));
+  const setSectionCfg = (patch) => setSections((current) => ({ ...current, ...patch }));
+
+  const applyContentTemplate = (template) => {
+    setContentTemplateId(template.id);
+    setForm((current) => ({ ...current, description: template.description }));
+    setSections((current) => ({ ...current, ...coverPatchFromTemplate(template) }));
+  };
+
+  const applyLogoTemplate = (template) => {
+    setLogoTemplateId(template.id);
+    setForm((current) => ({ ...current, logoUrl: template.url }));
+  };
+
+  const applyCoverTemplate = (template) => {
+    setCoverTemplateId(template.id);
+    setForm((current) => ({ ...current, coverImageUrl: template.url }));
+  };
+
+  const changeBusinessName = (businessName) => {
+    setForm((current) => {
+      const suggestedSlug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      if (logoTemplateId === "custom") return { ...current, businessName, storeSlug: slugTouched ? current.storeSlug : suggestedSlug };
+      const template = getLogoTemplates(current.category, businessName, logoColor).find((item) => item.id === logoTemplateId);
+      return { ...current, businessName, storeSlug: slugTouched ? current.storeSlug : suggestedSlug, logoUrl: template?.url || current.logoUrl };
+    });
+  };
+
+  const checkStoreSlug = async () => {
+    if (!form.storeSlug.trim()) { setSlugState(""); return; }
+    try {
+      const r = await api.get(`/store-address/check?slug=${encodeURIComponent(form.storeSlug)}`);
+      setSlugState(r.data.available ? `✓ Alamat tersedia: /site/${r.data.slug}` : "Alamat toko ini sudah digunakan");
+    } catch (_) { setSlugState("Tidak dapat memeriksa alamat toko"); }
+  };
+
+  const changeLogoColor = (color) => {
+    setLogoColor(color);
+    if (logoTemplateId === "custom") return;
+    const template = getLogoTemplates(form.category, form.businessName, color).find((item) => item.id === logoTemplateId);
+    if (template) setForm((current) => ({ ...current, logoUrl: template.url }));
+  };
+
+  const changeCategory = (category) => {
+    const template = pickRandomContentTemplate(category);
+    const images = pickRandomImageTemplates(category, form.businessName);
+    setContentTemplateId(template.id);
+    setLogoTemplateId(images.logo.id);
+    setCoverTemplateId(images.cover.id);
+    const logo = getLogoTemplates(category, form.businessName, logoColor).find((item) => item.id === images.logo.id) || images.logo;
+    setForm((current) => ({ ...current, category, description: template.description, logoUrl: logo.url, coverImageUrl: images.cover.url }));
+    setSections({ ...makeRandomSections({ category }), ...coverPatchFromTemplate(template) });
+  };
 
   const handlePaletteSelect = (pal) => {
     setSelectedPalette(pal.id);
@@ -184,11 +233,11 @@ export function CreateWebsite() {
 
   const uploadLogo = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    try { const r = await uploadFile(f); set("logoUrl", r.url); } catch (ex) { setErr(errorText(ex)); }
+    try { const r = await uploadFile(f); setLogoTemplateId("custom"); set("logoUrl", r.url); } catch (ex) { setErr(errorText(ex)); }
   };
   const uploadCover = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    try { const r = await uploadFile(f); set("coverImageUrl", r.url); } catch (ex) { setErr(errorText(ex)); }
+    try { const r = await uploadFile(f); setCoverTemplateId("custom"); set("coverImageUrl", r.url); } catch (ex) { setErr(errorText(ex)); }
   };
   const uploadProductImage = async (i, e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -208,7 +257,7 @@ export function CreateWebsite() {
       const createPayload = {
         ...form,
         templateStyle: selectedTemplate,
-        themeConfig: { primary: primaryColor, accent: accentColor, style: selectedTemplate },
+        themeConfig: { primary: primaryColor, accent: accentColor, style: selectedTemplate, coverVariant: coverTemplateId },
       };
       const w = (await api.post("/websites", createPayload)).data;
       for (const p of products.filter(x => x.name)) {
@@ -275,21 +324,46 @@ export function CreateWebsite() {
             <h2>Mulai dari yang paling penting.</h2>
             <p className="form-intro">Informasi ini akan membantu AI memahami karakter bisnismu.</p>
             <div className="form-grid">
-              <label>Nama usaha<input data-testid="business-name-input" value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="Contoh: Kopi Senja" required /></label>
-              <label>Jenis usaha<select data-testid="business-category-select" value={form.category} onChange={e => set("category", e.target.value)}>{CATEGORIES.map(x => <option key={x}>{x}</option>)}</select></label>
-              <label className="full">Ceritakan tentang usahamu<textarea data-testid="business-description-input" value={form.description} onChange={e => set("description", e.target.value)} placeholder="Contoh: Kedai kopi kecil dengan biji kopi lokal dan suasana tenang untuk bekerja..." /></label>
-              <label className="upload-label">Logo usaha
-                <div data-testid="logo-upload" className="upload-box">
-                  {form.logoUrl ? <img src={form.logoUrl.startsWith("http") ? form.logoUrl : process.env.REACT_APP_BACKEND_URL + form.logoUrl} alt="logo" /> : <><Upload size={18} /><span>Upload logo</span></>}
+              <label>Nama usaha<input data-testid="business-name-input" value={form.businessName} onChange={e => changeBusinessName(e.target.value)} placeholder="Contoh: Kopi Senja" required /></label>
+          <label>Jenis usaha<select data-testid="business-category-select" value={form.category} onChange={e => changeCategory(e.target.value)}>{CATEGORIES.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label className="full">Alamat toko
+            <input data-testid="store-address-input" value={form.storeSlug} onChange={e => { setSlugTouched(true); set("storeSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-")); setSlugState(""); }} onBlur={checkStoreSlug} placeholder="contoh: kopi-senja" required />
+            <small className={slugState.startsWith("✓") ? "text-emerald-600" : slugState ? "text-red-600" : ""}>Alamat ini menjadi link toko kamu. Harus unik dan tidak dapat diubah setelah website Gratis dipublikasikan. {slugState}</small>
+          </label>
+              <div className="full compact-template-field">
+                <div className="field-heading-row">
+                  <label htmlFor="business-description-input">Ceritakan tentang usahamu</label>
+                  <div className="inline-template-select">
+                    <LayoutTemplate size={14} />
+                    <select aria-label="Template isi otomatis" data-testid="business-content-template-select" value={contentTemplateId} onChange={(e) => {
+                      const template = getContentTemplates(form.category).find((item) => item.id === e.target.value);
+                      if (template) applyContentTemplate(template);
+                    }}>
+                      {getContentTemplates(form.category).map((template, index) => (
+                        <option key={template.id} value={template.id}>{index + 1}. {template.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <textarea id="business-description-input" data-testid="business-description-input" value={form.description} onChange={e => set("description", e.target.value)} placeholder="Contoh: Kedai kopi kecil dengan biji kopi lokal dan suasana tenang untuk bekerja..." />
+              </div>
+              <div className="upload-label">
+                <div className="field-heading-row"><span>Logo usaha</span><div className="inline-template-select"><LayoutTemplate size={14} /><select aria-label="Template logo" data-testid="business-logo-template-select" value={logoTemplateId} onChange={(e) => { const template = getLogoTemplates(form.category, form.businessName, logoColor).find((item) => item.id === e.target.value); if (template) applyLogoTemplate(template); }}><option value="custom">Upload sendiri</option>{getLogoTemplates(form.category, form.businessName, logoColor).map((template, index) => <option key={template.id} value={template.id}>{index + 1}. {template.label}</option>)}</select></div></div>
+                <div className="logo-color-picker"><span>Warna logo</span><div>{LOGO_COLORS.map((color) => <button key={color} type="button" aria-label={`Pilih warna ${color}`} className={logoColor === color ? "active" : ""} style={{ backgroundColor: color }} onClick={() => changeLogoColor(color)} />)}<label className="custom-logo-color" title="Pilih warna sendiri"><input aria-label="Warna logo kustom" type="color" value={logoColor} onChange={(e) => changeLogoColor(e.target.value)} /></label></div></div>
+                <label data-testid="logo-upload" className="upload-box">
+                  {form.logoUrl ? <img src={resolveMediaUrl(form.logoUrl)} alt="logo" /> : <><Upload size={18} /><span>Upload logo</span></>}
                   <input type="file" accept="image/*" onChange={uploadLogo} data-testid="logo-input" />
-                </div>
-              </label>
-              <label className="upload-label">Cover image
-                <div data-testid="cover-upload" className="upload-box">
-                  {form.coverImageUrl ? <img src={form.coverImageUrl.startsWith("http") ? form.coverImageUrl : process.env.REACT_APP_BACKEND_URL + form.coverImageUrl} alt="cover" /> : <><Upload size={18} /><span>Upload cover</span></>}
-                  <input type="file" accept="image/*" onChange={uploadCover} data-testid="cover-input" />
-                </div>
-              </label>
+                </label>
+              </div>
+              <div className="upload-label cover-upload-field full">
+                <div className="field-heading-row"><span>Cover image</span><div className="inline-template-select"><LayoutTemplate size={14} /><select aria-label="Template cover" data-testid="business-cover-template-select" value={coverTemplateId} onChange={(e) => { const template = getCoverTemplates(form.category).find((item) => item.id === e.target.value); if (template) applyCoverTemplate(template); }}><option value="custom">Foto upload sendiri</option>{getCoverTemplates(form.category).map((template, index) => <option key={template.id} value={template.id}>{index + 1}. {template.label}</option>)}</select></div></div>
+                <label data-testid="cover-upload" className="upload-box cover-upload-box">
+                  {form.coverImageUrl ? <img src={resolveMediaUrl(form.coverImageUrl)} alt="Preview cover website" /> : <div className="cover-empty"><ImageIcon size={24} /><b>Tambahkan cover website</b></div>}
+                  <span className="cover-upload-overlay"><Upload size={16} /><b>Upload foto sendiri</b><small>PNG atau JPG · maks. 5 MB</small></span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadCover} data-testid="cover-input" />
+                </label>
+                <p className="cover-upload-hint">Pilih template dari daftar di atas, atau klik gambar untuk memakai foto usahamu sendiri.</p>
+              </div>
               <label>WhatsApp<input data-testid="business-whatsapp-input" value={form.whatsapp} onChange={e => set("whatsapp", e.target.value)} placeholder="628123456789" /></label>
               <label>Telepon<input data-testid="business-phone-input" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Nomor telepon" /></label>
               <label>Instagram<input data-testid="business-instagram-input" value={form.instagram} onChange={e => set("instagram", e.target.value)} placeholder="@kopisenja" /></label>
@@ -315,7 +389,7 @@ export function CreateWebsite() {
                   <div className="product-images">
                     {(p.images || []).map((img, j) => (
                       <div key={j} className="product-image-thumb">
-                        <img src={img.startsWith("http") ? img : process.env.REACT_APP_BACKEND_URL + img} alt="" />
+                        <img src={resolveMediaUrl(img)} alt="" />
                         <button data-testid={`remove-product-${i}-image-${j}`} onClick={() => removeProductImage(i, j)}><X size={12} /></button>
                       </div>
                     ))}
@@ -332,17 +406,18 @@ export function CreateWebsite() {
                 )}
               </div>
             ))}
-            <button data-testid="add-product-button" className="add-product" onClick={() => setProducts([...products, { name: "", description: "", price: "", images: [] }])}>
-              <Plus size={16} /> Tambah produk
+            <button data-testid="add-product-button" className="add-product" disabled={productLimit !== null && products.length >= productLimit} onClick={() => setProducts([...products, { name: "", description: "", price: "", images: [] }])}>
+              <Plus size={16} /> Tambah produk{productLimit ? ` (${products.length}/${productLimit})` : ""}
             </button>
+            {productLimit && <p className="form-intro" style={{ marginTop: 10 }}>Paket Gratis maksimal 3 produk per website. Upgrade paket untuk katalog tanpa batas.</p>}
           </>
         )}
         {step === 3 && (
           <>
             <div className="eyebrow">ATUR SECTION HALAMAN</div>
             <h2>Susun bagian halaman website-mu.</h2>
-            <p className="form-intro">Nyalakan/matikan tiap bagian, atau pakai preset template untuk mengisi konten secara instan. Semua bisa diubah lagi nanti.</p>
-            <SectionForm site={form} cfg={sections} set={setSectionCfg} />
+            <p className="form-intro">Isi Section 1 Cover sebelum website dibuat, lalu atur bagian lainnya. Field Cover yang dikosongkan akan dilengkapi oleh AI.</p>
+            <SectionForm site={form} cfg={sections} set={setSectionCfg} onCoverTemplateApply={applyContentTemplate} />
           </>
         )}
         {step === 4 && (
@@ -436,7 +511,7 @@ export function CreateWebsite() {
                 <span>Website {form.businessName || "Usaha"} Siap Dibuat dengan AI</span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                UsahaKu AI akan menyusun copywriting &amp; layout berdasarkan template <b>{WEBSITE_TEMPLATES.find(t=>t.id===selectedTemplate)?.name}</b> dengan warna <b>{primaryColor}</b>.
+                {APP_NAME} AI akan menyusun copywriting &amp; layout berdasarkan template <b>{WEBSITE_TEMPLATES.find(t=>t.id===selectedTemplate)?.name}</b> dengan warna <b>{primaryColor}</b>.
               </p>
             </div>
           </div>
@@ -445,7 +520,7 @@ export function CreateWebsite() {
         <div className="wizard-actions">
           {step > 1 && <Button data-testid="wizard-previous-button" variant="outline" onClick={() => setStep(step - 1)}>Kembali</Button>}
           {step < 4 ? (
-            <Button data-testid="wizard-next-button" onClick={() => { if (step === 1 && !form.businessName) { setErr("Nama usaha wajib diisi"); return; } setErr(""); setStep(step + 1); }}>
+            <Button data-testid="wizard-next-button" onClick={() => { if (step === 1 && (!form.businessName || !form.storeSlug)) { setErr("Nama usaha dan alamat toko wajib diisi"); return; } if (step === 1 && slugState.includes("sudah digunakan")) { setErr("Silakan gunakan alamat toko yang berbeda"); return; } setErr(""); setStep(step + 1); }}>
               Lanjut <ArrowRight size={16} />
             </Button>
           ) : (
@@ -467,9 +542,10 @@ export function WebsiteDetail() {
   const [busy, setBusy] = useState(false);
   const [command, setCommand] = useState("");
   const [device, setDevice] = useState("desktop");
+  const [isFreePlan, setIsFreePlan] = useState(false);
   const load = () => api.get(`/websites/${id}`).then(r => setW(r.data));
   const loadAnalytics = () => api.get(`/websites/${id}/analytics`).then(r => setAnalytics(r.data)).catch(() => {});
-  useEffect(() => { load(); loadAnalytics(); }, [id]);
+  useEffect(() => { load(); loadAnalytics(); api.get("/auth/me").then(r => setIsFreePlan(r.data.planSlug === "trial")).catch(() => {}); }, [id]);
   if (!w) return <Loading text="Menyiapkan website..." />;
 
   const generate = async () => {
@@ -507,8 +583,8 @@ export function WebsiteDetail() {
           </Button>
         </div>
       </div>
-      <div className="editor-layout">
-        <div className="preview-frame">
+      <div className={`editor-layout editor-${device}`}>
+        <div className={`preview-frame preview-${device}`}>
           {w.status === "PUBLISHED" && analytics && (
             <div className="analytics-strip" data-testid="analytics-strip">
               <div><small>KUNJUNGAN</small><b>{analytics.pageViews || 0}</b></div>
@@ -528,7 +604,7 @@ export function WebsiteDetail() {
             )}
           </div>
           <div className={`device-frame device-${device}`}>
-            <PublicWebsiteView data={w} embedded />
+            <PublicWebsiteView data={w} embedded device={device} />
           </div>
         </div>
         <div className="ai-panel">
@@ -559,7 +635,8 @@ export function WebsiteDetail() {
           <div className="detail-links">
             <Link data-testid="manual-edit-link" to={`/dashboard/websites/${id}/edit`}>Edit informasi & produk <ArrowRight size={15} /></Link>
             <Link data-testid="subscription-link" to="/dashboard/subscription">Kelola paket <ArrowRight size={15} /></Link>
-            <button data-testid="delete-website-button" className="danger-link" onClick={removeSite}><Trash2 size={14} />Hapus website</button>
+            {!isFreePlan && <button data-testid="delete-website-button" className="danger-link" onClick={removeSite}><Trash2 size={14} />Hapus website</button>}
+            {isFreePlan && <span className="text-xs text-slate-500">Website Gratis tidak dapat dihapus.</span>}
           </div>
         </div>
       </div>
@@ -574,15 +651,18 @@ export function ManualEdit() {
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [products, setProducts] = useState([]);
-  useEffect(() => { api.get(`/websites/${id}`).then(r => { setW(r.data); setProducts(r.data.products || []); }); }, [id]);
+  const [isFreePlan, setIsFreePlan] = useState(false);
+  useEffect(() => {
+    api.get(`/websites/${id}`).then(r => { setW(r.data); setProducts(r.data.products || []); });
+    api.get("/auth/me").then(r => setIsFreePlan(r.data.planSlug === "trial")).catch(() => {});
+  }, [id]);
   if (!w) return <Loading text="Menyiapkan editor..." />;
-  const set = (k, v) => setW({ ...w, [k]: v });
+  const set = (k, v) => setW((current) => ({ ...current, [k]: v }));
   const save = async () => {
     setSaving(true); setErr("");
     try {
-      const payload = { businessName: w.businessName, category: w.category, description: w.description, logoUrl: w.logoUrl, coverImageUrl: w.coverImageUrl, whatsapp: w.whatsapp, phone: w.phone, email: w.email, instagram: w.instagram, facebook: w.facebook, tiktok: w.tiktok, address: w.address, city: w.city, province: w.province, customDomain: w.customDomain || "" };
+      const payload = { businessName: w.businessName, storeSlug: w.storeSlug || w.slug || "", category: w.category, description: w.description, logoUrl: w.logoUrl, coverImageUrl: w.coverImageUrl, whatsapp: w.whatsapp, phone: w.phone, email: w.email, instagram: w.instagram, facebook: w.facebook, tiktok: w.tiktok, address: w.address, city: w.city, province: w.province, customDomain: w.customDomain || "" };
       await api.put(`/websites/${id}`, payload);
-      await api.put(`/websites/${id}/theme`, { primary: w.themeConfig?.primary, accent: w.themeConfig?.accent, style: w.themeConfig?.style, heroTitle: w.aiGeneratedContent?.heroTitle, heroSubtitle: w.aiGeneratedContent?.heroSubtitle, about: w.aiGeneratedContent?.about });
       nav(`/dashboard/websites/${id}`);
     } catch (e) { setErr(errorText(e)); }
     finally { setSaving(false); }
@@ -619,7 +699,7 @@ export function ManualEdit() {
         <div>
           <Link data-testid="edit-back" className="back-link" to={`/dashboard/websites/${id}`}>← Kembali</Link>
           <h1>Edit informasi</h1>
-          <p>Ubah data usaha, produk, warna tema, dan section website.</p>
+          <p>Ubah data usaha, kontak, gambar, dan produk website.</p>
         </div>
         <div className="head-actions">
           <Button data-testid="edit-sections-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/sections`)}><LayoutTemplate size={16} /> Kelola section</Button>
@@ -629,14 +709,31 @@ export function ManualEdit() {
       <div className="wizard-card">
         <div className="eyebrow">DATA USAHA</div>
         <div className="form-grid">
-          <label>Nama usaha<input data-testid="edit-business-name" value={w.businessName || ""} onChange={e => set("businessName", e.target.value)} /></label>
+          <label>Nama usaha<input data-testid="edit-business-name" value={w.businessName || ""} onChange={e => set("businessName", e.target.value)} readOnly={isFreePlan} /><small>{isFreePlan ? "Nama usaha terkunci untuk website Gratis." : ""}</small></label>
           <label>Jenis usaha<select data-testid="edit-business-category" value={w.category || "Lainnya"} onChange={e => set("category", e.target.value)}>{CATEGORIES.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label className="full">Alamat toko
+            <input data-testid="edit-store-address" value={w.storeSlug || w.slug || ""} onChange={e => set("storeSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} readOnly={isFreePlan && w.status === "PUBLISHED"} />
+            <small>{isFreePlan && w.status === "PUBLISHED" ? "Alamat toko terkunci setelah website Gratis dipublikasikan." : "Alamat toko harus unik."}</small>
+          </label>
+          <label className="full">Template deskripsi usaha
+            <select data-testid="edit-description-template" defaultValue="" onChange={(e) => {
+              if (!e.target.value) return;
+              const template = getContentTemplates(w.category).find((item) => item.id === e.target.value);
+              if (template) set("description", template.description);
+              e.target.value = "";
+            }}>
+              <option value="">Pilih contoh {w.category || "usaha"} (10)</option>
+              {getContentTemplates(w.category).map((template, index) => (
+                <option key={template.id} value={template.id}>{index + 1}. {template.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="full">Deskripsi<textarea data-testid="edit-business-description" value={w.description || ""} onChange={e => set("description", e.target.value)} /></label>
           <label className="upload-label">Logo
-            <div className="upload-box">{w.logoUrl ? <img src={w.logoUrl.startsWith("http") ? w.logoUrl : process.env.REACT_APP_BACKEND_URL + w.logoUrl} alt="logo" /> : <><Upload size={18} /><span>Upload</span></>}<input type="file" accept="image/*" onChange={(e) => uploadLogoOrCover("logoUrl", e)} data-testid="edit-logo-input" /></div>
+            <div className="upload-box">{w.logoUrl ? <img src={resolveMediaUrl(w.logoUrl)} alt="logo" /> : <><Upload size={18} /><span>Upload</span></>}<input type="file" accept="image/*" onChange={(e) => uploadLogoOrCover("logoUrl", e)} data-testid="edit-logo-input" /></div>
           </label>
           <label className="upload-label">Cover
-            <div className="upload-box">{w.coverImageUrl ? <img src={w.coverImageUrl.startsWith("http") ? w.coverImageUrl : process.env.REACT_APP_BACKEND_URL + w.coverImageUrl} alt="cover" /> : <><Upload size={18} /><span>Upload</span></>}<input type="file" accept="image/*" onChange={(e) => uploadLogoOrCover("coverImageUrl", e)} data-testid="edit-cover-input" /></div>
+            <div className="upload-box">{w.coverImageUrl ? <img src={resolveMediaUrl(w.coverImageUrl)} alt="cover" /> : <><Upload size={18} /><span>Upload</span></>}<input type="file" accept="image/*" onChange={(e) => uploadLogoOrCover("coverImageUrl", e)} data-testid="edit-cover-input" /></div>
           </label>
           <label>WhatsApp<input data-testid="edit-whatsapp" value={w.whatsapp || ""} onChange={e => set("whatsapp", e.target.value)} /></label>
           <label>Instagram<input data-testid="edit-instagram" value={w.instagram || ""} onChange={e => set("instagram", e.target.value)} /></label>
@@ -646,14 +743,6 @@ export function ManualEdit() {
           <label className="full">Domain custom (opsional · fitur Platinum)
             <input data-testid="edit-custom-domain" value={w.customDomain || ""} onChange={e => set("customDomain", e.target.value)} placeholder="Contoh: kopisenja.com — hubungi admin untuk aktivasi DNS" />
           </label>
-        </div>
-        <div className="eyebrow" style={{ marginTop: 32 }}>WARNA TEMA</div>
-        <div className="form-grid">
-          <label>Warna utama<input data-testid="edit-primary-color" type="color" value={w.themeConfig?.primary || "#16A34A"} onChange={e => set("themeConfig", { ...(w.themeConfig || {}), primary: e.target.value })} /></label>
-          <label>Warna aksen<input data-testid="edit-accent-color" type="color" value={w.themeConfig?.accent || "#14532D"} onChange={e => set("themeConfig", { ...(w.themeConfig || {}), accent: e.target.value })} /></label>
-          <label className="full">Judul hero<input data-testid="edit-hero-title" value={w.aiGeneratedContent?.heroTitle || ""} onChange={e => set("aiGeneratedContent", { ...(w.aiGeneratedContent || {}), heroTitle: e.target.value })} /></label>
-          <label className="full">Sub-hero<input data-testid="edit-hero-subtitle" value={w.aiGeneratedContent?.heroSubtitle || ""} onChange={e => set("aiGeneratedContent", { ...(w.aiGeneratedContent || {}), heroSubtitle: e.target.value })} /></label>
-          <label className="full">Tentang bisnis<textarea data-testid="edit-about" value={w.aiGeneratedContent?.about || ""} onChange={e => set("aiGeneratedContent", { ...(w.aiGeneratedContent || {}), about: e.target.value })} /></label>
         </div>
         <div className="eyebrow" style={{ marginTop: 32 }}>PRODUK</div>
         {products.map((p) => (
@@ -666,7 +755,7 @@ export function ManualEdit() {
               <div className="product-images">
                 {(p.images || []).map((img, j) => (
                   <div key={j} className="product-image-thumb">
-                    <img src={img.startsWith("http") ? img : process.env.REACT_APP_BACKEND_URL + img} alt="" />
+                    <img src={resolveMediaUrl(img)} alt="" />
                     <button onClick={() => updateProduct({ ...p, images: p.images.filter((_, k) => k !== j) })}><X size={12} /></button>
                   </div>
                 ))}
@@ -681,7 +770,8 @@ export function ManualEdit() {
             <button data-testid={`edit-remove-product-${p.id}`} className="icon-button" onClick={() => removeProduct(p.id)}><X size={17} /></button>
           </div>
         ))}
-        <button data-testid="edit-add-product" className="add-product" onClick={addNewProduct}><Plus size={16} /> Tambah produk</button>
+        <button data-testid="edit-add-product" className="add-product" disabled={isFreePlan && products.length >= 3} onClick={addNewProduct}><Plus size={16} /> Tambah produk{isFreePlan ? ` (${products.length}/3)` : ""}</button>
+        {isFreePlan && <p className="form-intro" style={{ marginTop: 10 }}>Paket Gratis maksimal 3 produk per website.</p>}
         <FormError msg={err} />
       </div>
     </div>

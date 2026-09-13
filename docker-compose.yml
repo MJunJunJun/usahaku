@@ -11,16 +11,22 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    env_file:
-      - backend/.env
     depends_on:
       - mongo
     environment:
       MONGO_URL: mongodb://mongo:27017
       DB_NAME: usahaku
-      JWT_SECRET: change-this-secret
-      ADMIN_EMAIL: admin@usahaku.id
-      ADMIN_PASSWORD: admin123
+      # Kosong berarti backend membuat secret lokal di volume .runtime.
+      # Di production sebaiknya isi JWT_SECRET dari environment server.
+      JWT_SECRET: ${JWT_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@usahaku.id}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      APP_NAME: ${APP_NAME:-UsahaKu}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-hello@usahaku.id}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       GOWA_BASE_URL: http://gowa:3000
       GOWA_USER: admin
       GOWA_PASS: admin123
@@ -29,12 +35,15 @@ services:
       - 8000:8000
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./backend/.runtime:/app/.runtime
 
   frontend:
     build:
       context: ./frontend
       args:
         REACT_APP_BACKEND_URL: ""
+        REACT_APP_BRAND_NAME: ${APP_NAME:-UsahaKu}
+        REACT_APP_PUBLIC_SITE_HOST: ${PUBLIC_SITE_HOST:-}
     restart: unless-stopped
     depends_on:
       - backend
