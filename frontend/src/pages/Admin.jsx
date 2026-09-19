@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Search, Check, X, Users, CreditCard, Store, ClipboardList, Sparkles, Plus, Trash2 } from "lucide-react";
-import { api, errorText, money, formatDate, formatDateTime, resolveMediaUrl } from "../lib/api";
+import { ArrowRight, Search, Check, X, Users, CreditCard, Store, ClipboardList, Sparkles, Plus, Trash2, LayoutTemplate, Upload, Image as ImageIcon } from "lucide-react";
+import { api, errorText, money, formatDate, formatDateTime, resolveMediaUrl, uploadFile } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 import { APP_NAME } from "../lib/config";
+import { TEMPLATE_CATEGORIES } from "../lib/contentTemplates";
+import { LOGO_STYLE_OPTIONS } from "../lib/imageTemplates";
+import { applyTemplateCatalog, makeDefaultTemplateCatalog } from "../lib/generatorTemplateCatalog";
 
 const AdminHead = ({ eyebrow, title, subtitle, extra }) => (
   <div className="page-head">
@@ -531,4 +534,75 @@ export function AdminWebsites() {
       </div>
     </div>
   );
+}
+
+const catalogId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+export function AdminGeneratorTemplates() {
+  // Render the local defaults immediately. The persisted catalogue is fetched
+  // afterwards so a slow database/proxy never leaves the admin on a blank
+  // loading screen.
+  const [catalog, setCatalog] = useState(() => makeDefaultTemplateCatalog());
+  const [loadingRemote, setLoadingRemote] = useState(true);
+  const [tab, setTab] = useState("content");
+  const [category, setCategory] = useState("Coffee Shop");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState("");
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api.get("/admin/generator-templates", { timeout: 8000 })
+      .then((r) => { if (active && r.data.catalog) setCatalog(r.data.catalog); })
+      .catch(() => { if (active) setErr("Template bawaan ditampilkan. Data tersimpan di server belum dapat dimuat."); })
+      .finally(() => { if (active) setLoadingRemote(false); });
+    return () => { active = false; };
+  }, []);
+
+  const change = (key, id, field, value) => setCatalog((old) => ({ ...old, [key]: old[key].map((item) => item.id === id ? { ...item, [field]: value } : item) }));
+  const remove = (key, id) => setCatalog((old) => ({ ...old, [key]: old[key].filter((item) => item.id !== id) }));
+  const addContent = () => setCatalog((old) => ({ ...old, contents: [...old.contents, { id: catalogId("content"), category, label: "Template baru", description: "", heroTitle: "", heroSubtitle: "", about: "" }] }));
+  const addLogo = () => setCatalog((old) => ({ ...old, logos: [...old.logos, { id: catalogId("logo"), label: "Logo baru", styleIndex: 0, color: "" }] }));
+  const addCover = () => setCatalog((old) => ({ ...old, covers: [...old.covers, { id: catalogId("cover"), category, label: `Template ${category}`, url: "", position: "center", size: "cover", filter: "none" }] }));
+  const upload = async (key, id, file) => {
+    if (!file) return;
+    setUploading(id); setErr("");
+    try { const data = await uploadFile(file); change(key, id, "url", data.url); }
+    catch (e) { setErr(errorText(e)); }
+    finally { setUploading(""); }
+  };
+  const save = async () => {
+    setSaving(true); setMsg(""); setErr("");
+    try {
+      const clean = {
+        contents: catalog.contents.filter((x) => x.label?.trim()).map((x) => ({ ...x, label: x.label.trim() })),
+        logos: catalog.logos.filter((x) => x.label?.trim()).map((x) => ({ ...x, label: x.label.trim() })),
+        covers: catalog.covers.filter((x) => x.label?.trim() && x.url?.trim()).map((x) => ({ ...x, label: x.label.trim() })),
+      };
+      const { data } = await api.put("/admin/generator-templates", { catalog: clean });
+      setCatalog(data.catalog); applyTemplateCatalog(data.catalog); setMsg("Katalog template berhasil disimpan dan langsung dipakai generator.");
+    } catch (e) { setErr(errorText(e)); }
+    finally { setSaving(false); }
+  };
+  const contents = catalog.contents.filter((item) => item.category === category);
+  const covers = catalog.covers.filter((item) => item.category === category);
+  return <div className="dashboard generator-template-admin">
+    <AdminHead eyebrow="TEMPLATE GENERATOR" title="Kelola template isi otomatis" subtitle={loadingRemote ? "Menyiapkan template bawaan, lalu menyinkronkan perubahan tersimpan..." : "Atur teks, logo, dan cover image yang muncul di pembuat website."} extra={<Button onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan perubahan"}</Button>} />
+    <FormError msg={err} />{msg && <div className="success-inline">{msg}</div>}
+    <div className="template-admin-tabs">
+      <button className={tab === "content" ? "active" : ""} onClick={() => setTab("content")}><LayoutTemplate size={16} />Teks isian</button>
+      <button className={tab === "logo" ? "active" : ""} onClick={() => setTab("logo")}><Sparkles size={16} />Logo usaha</button>
+      <button className={tab === "cover" ? "active" : ""} onClick={() => setTab("cover")}><ImageIcon size={16} />Cover image</button>
+    </div>
+    {tab !== "logo" && <div className="template-category-filter"><label>Kategori usaha<select value={category} onChange={(e) => setCategory(e.target.value)}>{TEMPLATE_CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></label><span>{tab === "content" ? `${contents.length} template teks` : `${covers.length} cover image`}</span></div>}
+    {tab === "content" && <>
+      <div className="template-admin-list">{contents.map((item, index) => <section className="template-editor-card" key={item.id}>
+        <div className="template-card-head"><b>Template {index + 1}</b><button className="icon-button danger" title="Hapus template" onClick={() => remove("contents", item.id)}><Trash2 size={16} /></button></div>
+        <div className="form-grid"><label>Nama template<input value={item.label || ""} onChange={(e) => change("contents", item.id, "label", e.target.value)} /></label><label>Kategori<select value={item.category} onChange={(e) => change("contents", item.id, "category", e.target.value)}>{TEMPLATE_CATEGORIES.map((x) => <option key={x}>{x}</option>)}</select></label><label className="full">Ceritakan tentang usahamu<textarea value={item.description || ""} onChange={(e) => change("contents", item.id, "description", e.target.value)} /></label><label className="full">Judul hero<input value={item.heroTitle || ""} onChange={(e) => change("contents", item.id, "heroTitle", e.target.value)} /></label><label className="full">Sub-hero<textarea value={item.heroSubtitle || ""} onChange={(e) => change("contents", item.id, "heroSubtitle", e.target.value)} /></label><label className="full">Tentang bisnis<textarea value={item.about || ""} onChange={(e) => change("contents", item.id, "about", e.target.value)} /></label></div>
+      </section>)}</div><button className="add-product" onClick={addContent}><Plus size={16} />Tambah template teks</button>
+    </>}
+    {tab === "logo" && <><div className="template-admin-list">{catalog.logos.map((item, index) => <section className="template-editor-card logo-editor" key={item.id}><div className="template-card-head"><b>Logo {index + 1}</b><button className="icon-button danger" onClick={() => remove("logos", item.id)}><Trash2 size={16} /></button></div><div className="form-grid"><label>Nama template<input value={item.label || ""} onChange={(e) => change("logos", item.id, "label", e.target.value)} /></label><label>Gaya logo<select value={item.styleIndex ?? 0} onChange={(e) => change("logos", item.id, "styleIndex", Number(e.target.value))}>{LOGO_STYLE_OPTIONS.map((style) => <option value={style.styleIndex} key={style.id}>{style.label}</option>)}</select></label><label>Warna default (opsional)<input placeholder="#0077B6" value={item.color || ""} onChange={(e) => change("logos", item.id, "color", e.target.value)} /></label><label>Gambar logo kustom (opsional)<input value={item.url || ""} placeholder="URL gambar atau upload" onChange={(e) => change("logos", item.id, "url", e.target.value)} /></label></div><label className="template-upload"><Upload size={15} />{uploading === item.id ? "Mengunggah..." : "Upload logo kustom"}<input type="file" accept="image/*" onChange={(e) => upload("logos", item.id, e.target.files?.[0])} /></label></section>)}</div><button className="add-product" onClick={addLogo}><Plus size={16} />Tambah template logo</button></>}
+    {tab === "cover" && <><div className="template-admin-list">{covers.map((item, index) => <section className="template-editor-card cover-editor" key={item.id}><div className="template-card-head"><b>Cover {index + 1}</b><button className="icon-button danger" onClick={() => remove("covers", item.id)}><Trash2 size={16} /></button></div><div className="cover-editor-grid"><div className="cover-admin-preview" style={item.url ? { backgroundImage: `url(${resolveMediaUrl(item.url)})` } : undefined}>{!item.url && "Belum ada gambar"}</div><div className="form-grid"><label>Nama template<input value={item.label || ""} onChange={(e) => change("covers", item.id, "label", e.target.value)} /></label><label>Posisi gambar<select value={item.position || "center"} onChange={(e) => change("covers", item.id, "position", e.target.value)}><option value="center">Tengah</option><option value="top">Atas</option><option value="bottom">Bawah</option></select></label><label className="full">URL gambar<input value={item.url || ""} placeholder="URL gambar atau upload" onChange={(e) => change("covers", item.id, "url", e.target.value)} /></label><label>Filter<select value={item.filter || "none"} onChange={(e) => change("covers", item.id, "filter", e.target.value)}><option value="none">Normal</option><option value="brightness(.9)">Lebih gelap</option><option value="brightness(1.08)">Lebih terang</option><option value="saturate(.8)">Lembut</option></select></label></div></div><label className="template-upload"><Upload size={15} />{uploading === item.id ? "Mengunggah..." : "Upload cover image"}<input type="file" accept="image/*" onChange={(e) => upload("covers", item.id, e.target.files?.[0])} /></label></section>)}</div><button className="add-product" onClick={addCover}><Plus size={16} />Tambah cover image</button></>}
+  </div>;
 }

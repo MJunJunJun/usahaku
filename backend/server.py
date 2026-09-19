@@ -42,7 +42,7 @@ client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=2000)
 db_proxy = DatabaseProxy()
 db_proxy.set_db(client[db_name])
 db = db_proxy
-app = FastAPI(title="UsahaKu API")
+app = FastAPI(title="Situska API")
 api = APIRouter(prefix="/api")
 log = logging.getLogger("usahaku")
 JWT_ALGORITHM = "HS256"
@@ -108,11 +108,11 @@ DEFAULT_PLANS = [
 
 DEFAULT_SETTINGS = {
     "id": "platform",
-    "applicationName": os.environ.get("APP_NAME", "UsahaKu"),
-    "supportEmail": os.environ.get("SUPPORT_EMAIL", "hello@usahaku.id"),
+    "applicationName": os.environ.get("APP_NAME", "Situska"),
+    "supportEmail": os.environ.get("SUPPORT_EMAIL", "hello@buildza.id"),
     "adminWhatsapp": "6281234567890",
     "bankName": "Bank BCA",
-    "accountName": "PT UsahaKu Digital Indonesia",
+    "accountName": "PT Situska Digital Indonesia",
     "accountNumber": "1234567890",
     "paymentInstructions": "Silakan transfer sejumlah total tagihan ke rekening di atas. Setelah transfer, unggah bukti pembayaran dan hubungi admin melalui WhatsApp untuk verifikasi lebih cepat.",
     "additionalWebsitePrice": ADDITIONAL_WEBSITE_PRICE,
@@ -132,7 +132,7 @@ SHOWCASE_SITES = [
 async def ensure_showcase_sites(admin_whatsapp: str):
     showcase_owner_id = "usahaku-showcase-owner"
     if not await db.users.find_one({"id": showcase_owner_id}):
-        await db.users.insert_one({"id": showcase_owner_id, "name": "UsahaKu Showcase", "email": "showcase@usahaku.internal", "password_hash": "", "role": "SYSTEM", "accountStatus": "ACTIVE", "subscriptionStatus": "ACTIVE", "planSlug": "premium", "websiteQuota": 999, "createdAt": now()})
+        await db.users.insert_one({"id": showcase_owner_id, "name": "Situska Showcase", "email": "showcase@usahaku.internal", "password_hash": "", "role": "SYSTEM", "accountStatus": "ACTIVE", "subscriptionStatus": "ACTIVE", "planSlug": "premium", "websiteQuota": 999, "createdAt": now()})
     for spec in SHOWCASE_SITES:
         site = await db.websites.find_one({"slug": spec["slug"]}, {"_id": 0})
         website_id = site["id"] if site else uid()
@@ -173,7 +173,7 @@ async def current_user(request: Request):
     user = await db.users.find_one({"id": payload.get("sub")}, {"_id": 0})
     if not user: raise HTTPException(401, "Akun tidak ditemukan")
     if user.get("accountStatus") == "SUSPENDED":
-        raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin UsahaKu.")
+        raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin Situska.")
     return user
 
 async def admin_user(user=Depends(current_user)):
@@ -264,6 +264,13 @@ class ProductInput(BaseModel):
     category: str = ""
     images: List[str] = []
 
+class ArticleInput(BaseModel):
+    title: str
+    excerpt: str = ""
+    content: str = ""
+    coverImageUrl: str = ""
+    status: str = "DRAFT"
+
 class AIEditInput(BaseModel):
     command: str
 
@@ -351,6 +358,9 @@ class SettingsInput(BaseModel):
     additionalWebsitePrice: Optional[int] = None
     waMessageTemplates: Optional[List[dict]] = None
 
+class GeneratorTemplateCatalogInput(BaseModel):
+    catalog: dict
+
 class UserAdminAction(BaseModel):
     action: str
     reason: Optional[str] = ""
@@ -434,7 +444,7 @@ async def download_file(file_id: str):
     raise HTTPException(404, "File tidak tersedia")
 
 @api.get("/")
-async def root(): return {"message": "UsahaKu API aktif"}
+async def root(): return {"message": "Situska API aktif"}
 
 @api.get("/settings/public")
 async def public_settings():
@@ -488,7 +498,7 @@ async def register(data: RegisterInput, response: Response, request: Request):
 
         raise HTTPException(409, "Nomor WhatsApp sudah terdaftar pada akun lain")
 
-    await notify(user["id"], "Selamat datang di UsahaKu", "Buat website pertamamu untuk memulai masa Gratis 30 hari.")
+    await notify(user["id"], "Selamat datang di Situska", "Buat website pertamamu untuk memulai masa Gratis 30 hari.")
     if phone:
         await db.wa_verifications.delete_one({"phone": phone})
     set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS))
@@ -506,7 +516,7 @@ async def send_wa_code(data: WaSendInput):
         {"$set": {"phone": phone, "code": code, "expiresAt": expires, "verified": False, "name": (data.name or ""), "createdAt": now(), "updatedAt": now()}},
         upsert=True,
     )
-    msg = f"Kode verifikasi UsahaKu: {code}. Berlaku 10 menit."
+    msg = f"Kode verifikasi Situska: {code}. Berlaku 10 menit."
     send_res = await wa_service.send_text(db, phone, msg, event="wa_verify")
     if not send_res.get("ok"):
         await wa_service.notify_admin(
@@ -538,7 +548,7 @@ async def login(data: AuthInput, response: Response, request: Request):
     if not user or not verify_password(data.password, user.get("password_hash", "")):
         raise HTTPException(401, "Email atau password salah")
     if user.get("accountStatus") == "SUSPENDED":
-        raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin UsahaKu.")
+        raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin Situska.")
     await refresh_status(user)
     set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS))
     return public(user)
@@ -619,7 +629,7 @@ async def create_website(data: WebsiteInput, user=Depends(current_user)):
     if duplicate:
         raise HTTPException(409, "Alamat toko sudah digunakan. Silakan pilih alamat lain.")
     t_style = data.templateStyle or "modern"
-    t_config = data.themeConfig or {"primary": "#16A34A", "accent": "#14532D", "style": t_style}
+    t_config = data.themeConfig or {"primary": "#0077B6", "accent": "#03045E", "style": t_style}
     if "style" not in t_config: t_config["style"] = t_style
     website_data = data.model_dump()
     website_data["storeSlug"] = requested_slug
@@ -637,6 +647,48 @@ async def get_website(site_id: str, user=Depends(current_user)):
     site = await owned_site(site_id, user)
     site["products"] = await db.products.find({"websiteId": site_id}, {"_id": 0}).sort("sortOrder", 1).to_list(200)
     return site
+
+async def owned_article(article_id, user):
+    article = await db.articles.find_one({"id": article_id}, {"_id": 0})
+    if not article: raise HTTPException(404, "Artikel tidak ditemukan")
+    await owned_site(article["websiteId"], user)
+    return article
+
+@api.get("/websites/{site_id}/articles")
+async def list_articles(site_id: str, user=Depends(current_user)):
+    await owned_site(site_id, user)
+    return await db.articles.find({"websiteId": site_id}, {"_id": 0}).sort("updatedAt", -1).to_list(200)
+
+@api.post("/websites/{site_id}/articles")
+async def create_article(site_id: str, data: ArticleInput, user=Depends(current_user)):
+    site = await owned_site(site_id, user)
+    title = data.title.strip()
+    if not title: raise HTTPException(400, "Judul artikel wajib diisi")
+    base_slug = slugify(title)
+    slug = base_slug
+    number = 2
+    while await db.articles.find_one({"websiteId": site_id, "slug": slug}):
+        slug = f"{base_slug}-{number}"; number += 1
+    article = {"id": uid(), "websiteId": site_id, "websiteSlug": site.get("slug") or site.get("storeSlug", ""), "title": title, "slug": slug, "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "createdAt": now(), "updatedAt": now()}
+    if article["status"] == "PUBLISHED": article["publishedAt"] = now()
+    await db.articles.insert_one(article)
+    return public(article)
+
+@api.put("/articles/{article_id}")
+async def update_article(article_id: str, data: ArticleInput, user=Depends(current_user)):
+    article = await owned_article(article_id, user)
+    title = data.title.strip()
+    if not title: raise HTTPException(400, "Judul artikel wajib diisi")
+    updates = {"title": title, "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "updatedAt": now()}
+    if updates["status"] == "PUBLISHED" and not article.get("publishedAt"): updates["publishedAt"] = now()
+    await db.articles.update_one({"id": article_id}, {"$set": updates})
+    return public(await db.articles.find_one({"id": article_id}, {"_id": 0}))
+
+@api.delete("/articles/{article_id}")
+async def delete_article(article_id: str, user=Depends(current_user)):
+    await owned_article(article_id, user)
+    await db.articles.delete_one({"id": article_id})
+    return {"ok": True}
 
 @api.get("/store-address/check")
 async def check_store_address(slug: str, siteId: str = "", user=Depends(current_user)):
@@ -763,7 +815,7 @@ CATEGORY_KNOWLEDGE = {
         ],
         "headline": "Menu Kopi & Cemilan Favorit",
         "subheadline": "Pilihan racikan kopi segar dan camilan lezat pendamping hari Anda.",
-        "primary": "#166534", "accent": "#14532D", "style": "warm",
+        "primary": "#0077B6", "accent": "#03045E", "style": "warm",
         "cover": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1200&auto=format&fit=crop",
         "faq": [
             {"q": "Apakah bisa pesan untuk acara atau catering?", "a": "Tentu saja! Kami melayani pemesanan paket kopi botolan dan booth kopi untuk acara kantor, ulang tahun, atau pernikahan."},
@@ -949,7 +1001,7 @@ DEFAULT_KNOWLEDGE = {
     ],
     "headline": "Produk & Layanan Unggulan",
     "subheadline": "Pilihan produk berkualitas yang siap melengkapi kebutuhan harian Anda.",
-    "primary": "#16A34A", "accent": "#14532D", "style": "modern",
+    "primary": "#0077B6", "accent": "#03045E", "style": "modern",
     "cover": "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=1200&auto=format&fit=crop",
     "faq": [
         {"q": "Bagaimana cara memesan produk?", "a": "Pilih produk yang Anda inginkan pada katalog, lalu klik tombol 'Pesan via WhatsApp'. Tim kami akan segera merespons Anda."},
@@ -1074,8 +1126,8 @@ async def generate(site_id: str, user=Depends(current_user)):
     # AI hanya menyediakan warna fallback untuk website lama yang belum memiliki tema.
     selected_theme = site.get("themeConfig") or {}
     theme = {
-        "primary": selected_theme.get("primary") or content.get("primaryColor", "#16A34A"),
-        "accent": selected_theme.get("accent") or content.get("accentColor", "#14532D"),
+        "primary": selected_theme.get("primary") or content.get("primaryColor", "#0077B6"),
+        "accent": selected_theme.get("accent") or content.get("accentColor", "#03045E"),
         "style": site.get("templateStyle") or selected_theme.get("style") or content.get("style", "modern"),
     }
     await db.websites.update_one({"id": site_id}, {"$set": {"aiGeneratedContent": content, "themeConfig": theme, "updatedAt": now()}})
@@ -1131,6 +1183,20 @@ async def public_site(slug: str):
     site["products"] = await db.products.find({"websiteId": site["id"]}, {"_id": 0}).sort("sortOrder", 1).to_list(200)
     site["maintenance"] = False
     return site
+
+@api.get("/public/{slug}/articles")
+async def public_articles(slug: str):
+    site = await db.websites.find_one({"slug": slug, "status": "PUBLISHED"}, {"_id": 0})
+    if not site: raise HTTPException(404, "Website belum dipublikasikan")
+    return await db.articles.find({"websiteId": site["id"], "status": "PUBLISHED"}, {"_id": 0, "content": 0}).sort("publishedAt", -1).to_list(200)
+
+@api.get("/public/{slug}/articles/{article_slug}")
+async def public_article(slug: str, article_slug: str):
+    site = await db.websites.find_one({"slug": slug, "status": "PUBLISHED"}, {"_id": 0})
+    if not site: raise HTTPException(404, "Website belum dipublikasikan")
+    article = await db.articles.find_one({"websiteId": site["id"], "slug": article_slug, "status": "PUBLISHED"}, {"_id": 0})
+    if not article: raise HTTPException(404, "Artikel tidak ditemukan")
+    return {"website": {"businessName": site["businessName"], "category": site.get("category", ""), "slug": slug, "logoUrl": site.get("logoUrl", "")}, "article": article}
 
 @api.get("/owner-access/{slug}")
 async def owner_access(slug: str, user=Depends(current_user)):
@@ -1353,6 +1419,58 @@ async def admin_websites(_=Depends(admin_user)):
         s["productCount"] = await db.products.count_documents({"websiteId": s["id"]})
     return sites
 
+@api.get("/admin/articles")
+async def admin_articles(_=Depends(admin_user)):
+    articles = await db.articles.find({}, {"_id": 0}).sort("updatedAt", -1).to_list(500)
+    sites = await db.websites.find({"id": {"$in": list({a.get("websiteId") for a in articles})}}, {"_id": 0, "id": 1, "businessName": 1, "slug": 1}).to_list(500)
+    lookup = {site["id"]: site for site in sites}
+    for article in articles: article["website"] = lookup.get(article.get("websiteId"), {})
+    return articles
+
+@api.get("/admin/buildza-articles")
+async def admin_buildza_articles(_=Depends(admin_user)):
+    return await db.platform_articles.find({}, {"_id": 0}).sort("updatedAt", -1).to_list(500)
+
+@api.post("/admin/buildza-articles")
+async def create_buildza_article(data: ArticleInput, admin=Depends(admin_user)):
+    title = data.title.strip()
+    if not title: raise HTTPException(400, "Judul artikel wajib diisi")
+    base_slug, slug, number = slugify(title), slugify(title), 2
+    while await db.platform_articles.find_one({"slug": slug}):
+        slug = f"{base_slug}-{number}"; number += 1
+    article = {"id": uid(), "title": title, "slug": slug, "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "createdAt": now(), "updatedAt": now(), "authorId": admin["id"]}
+    if article["status"] == "PUBLISHED": article["publishedAt"] = now()
+    await db.platform_articles.insert_one(article)
+    await log_activity(admin["id"], "create_buildza_article", None, article["id"], title)
+    return public(article)
+
+@api.put("/admin/buildza-articles/{article_id}")
+async def update_buildza_article(article_id: str, data: ArticleInput, admin=Depends(admin_user)):
+    article = await db.platform_articles.find_one({"id": article_id}, {"_id": 0})
+    if not article: raise HTTPException(404, "Artikel Situska tidak ditemukan")
+    if not data.title.strip(): raise HTTPException(400, "Judul artikel wajib diisi")
+    updates = {"title": data.title.strip(), "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "updatedAt": now()}
+    if updates["status"] == "PUBLISHED" and not article.get("publishedAt"): updates["publishedAt"] = now()
+    await db.platform_articles.update_one({"id": article_id}, {"$set": updates})
+    return public(await db.platform_articles.find_one({"id": article_id}, {"_id": 0}))
+
+@api.delete("/admin/buildza-articles/{article_id}")
+async def delete_buildza_article(article_id: str, admin=Depends(admin_user)):
+    result = await db.platform_articles.delete_one({"id": article_id})
+    if not result.deleted_count: raise HTTPException(404, "Artikel Situska tidak ditemukan")
+    await log_activity(admin["id"], "delete_buildza_article", None, article_id, "Artikel Situska dihapus")
+    return {"ok": True}
+
+@api.get("/content/buildza-articles")
+async def public_buildza_articles():
+    return await db.platform_articles.find({"status": "PUBLISHED"}, {"_id": 0, "content": 0}).sort("publishedAt", -1).to_list(200)
+
+@api.get("/content/buildza-articles/{article_slug}")
+async def public_buildza_article(article_slug: str):
+    article = await db.platform_articles.find_one({"slug": article_slug, "status": "PUBLISHED"}, {"_id": 0})
+    if not article: raise HTTPException(404, "Artikel tidak ditemukan")
+    return article
+
 @api.get("/admin/payments")
 async def admin_payments(_=Depends(admin_user)):
     return await db.payments.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
@@ -1385,7 +1503,7 @@ async def approve_payment(pid: str, admin=Depends(admin_user)):
     await log_activity(admin["id"], "approve_payment", p["userId"], pid, f"Approved {plan['name']} for Rp{int(p['amount'])}")
     user = await db.users.find_one({"id": p["userId"]}, {"_id": 0})
     settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
-    wa_message = f"Halo {user.get('name', '')}, pembayaran paket {plan['name']} sebesar Rp{int(p['amount']):,} telah disetujui. Berlangganan Anda aktif hingga {expiry.strftime('%d %B %Y')}{bonus_note}. Terima kasih telah menggunakan UsahaKu.".replace(",", ".")
+    wa_message = f"Halo {user.get('name', '')}, pembayaran paket {plan['name']} sebesar Rp{int(p['amount']):,} telah disetujui. Berlangganan Anda aktif hingga {expiry.strftime('%d %B %Y')}{bonus_note}. Terima kasih telah menggunakan Situska.".replace(",", ".")
     wa_link = f"https://wa.me/{(user.get('whatsapp') or '').replace('+','').replace(' ','')}?text={wa_message}" if user.get('whatsapp') else ""
 
     # ===== Notifikasi WhatsApp: pesanan disetujui (tidak menggagalkan approve) =====
@@ -1409,7 +1527,7 @@ async def reject_payment(pid: str, data: PaymentRejectInput, admin=Depends(admin
     await notify(p["userId"], "Pembayaran ditolak", f"Pembayaran ditolak: {data.reason}. Silakan submit ulang bukti pembayaran.")
     await log_activity(admin["id"], "reject_payment", p["userId"], pid, data.reason)
     user = await db.users.find_one({"id": p["userId"]}, {"_id": 0})
-    wa_message = f"Halo {user.get('name', '') if user else ''}, mohon maaf pembayaran paket {p.get('planName', '')} tidak dapat kami verifikasi. Alasan: {data.reason}. Silakan kirim ulang bukti transfer via UsahaKu."
+    wa_message = f"Halo {user.get('name', '') if user else ''}, mohon maaf pembayaran paket {p.get('planName', '')} tidak dapat kami verifikasi. Alasan: {data.reason}. Silakan kirim ulang bukti transfer via Situska."
 
     # ===== Notifikasi WhatsApp: pesanan ditolak (tidak menggagalkan reject) =====
     async def _wa_rejected():
@@ -1495,6 +1613,61 @@ async def admin_settings_update(data: SettingsInput, admin=Depends(admin_user)):
     await log_activity(admin["id"], "update_settings", None, "platform", json.dumps(updates))
     return await db.settings.find_one({"id": "platform"}, {"_id": 0})
 
+# Generator templates are intentionally kept in a single portable catalogue.
+# The frontend has defaults for a fresh installation; after an admin saves,
+# every generator screen reads this document regardless of the active domain.
+@api.get("/generator-templates")
+async def generator_templates_get():
+    doc = await db.settings.find_one({"id": "generator-template-catalog"}, {"_id": 0})
+    return {"catalog": doc.get("catalog") if doc else None}
+
+@api.get("/sitemap.xml")
+async def sitemap(request: Request):
+    """Domain-aware sitemap for the platform and every public generated site."""
+    from xml.sax.saxutils import escape
+    configured = (os.environ.get("PUBLIC_APP_URL") or "https://situska.com").strip().rstrip("/")
+    base = configured
+    seo_pages = ["website-usaha", "website-umkm", "website-toko-online", "website-cafe", "website-restoran", "website-bengkel", "website-barbershop", "website-bakery", "website-jasa", "artikel"]
+    pages = [(f"{base}/", None), *[(f"{base}/{path}", None) for path in seo_pages]]
+    # Only index public websites that contain enough real business information.
+    # Drafts, empty shells, and explicitly opted-out sites stay out of Google.
+    indexable_query = {"status": "PUBLISHED", "seoNoIndex": {"$ne": True}, "businessName": {"$exists": True, "$ne": ""}, "$or": [{"description": {"$exists": True, "$ne": ""}}, {"aiGeneratedContent.heroTitle": {"$exists": True, "$ne": ""}}]}
+    sites = await db.websites.find(indexable_query, {"_id": 0, "id": 1, "slug": 1, "updatedAt": 1}).to_list(50000)
+    for site in sites:
+        if site.get("slug"):
+            pages.append((f"{base}/site/{site['slug']}", site.get("updatedAt")))
+    site_slugs = {site.get("id"): site.get("slug") for site in sites}
+    articles = await db.articles.find({"status": "PUBLISHED"}, {"_id": 0, "websiteId": 1, "slug": 1, "updatedAt": 1}).to_list(50000)
+    for article in articles:
+        website_slug = site_slugs.get(article.get("websiteId"))
+        if website_slug and article.get("slug"):
+            pages.append((f"{base}/site/{website_slug}/artikel/{article['slug']}", article.get("updatedAt")))
+    platform_articles = await db.platform_articles.find({"status": "PUBLISHED"}, {"_id": 0, "slug": 1, "updatedAt": 1}).to_list(50000)
+    for article in platform_articles:
+        if article.get("slug"):
+            pages.append((f"{base}/artikel/{article['slug']}", article.get("updatedAt")))
+    urls = "".join(f"<url><loc>{escape(url)}</loc>{f'<lastmod>{escape(updated[:10])}</lastmod>' if updated else ''}</url>" for url, updated in pages)
+    return Response(content=f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>', media_type="application/xml")
+
+@api.get("/admin/generator-templates")
+async def admin_generator_templates_get(_=Depends(admin_user)):
+    doc = await db.settings.find_one({"id": "generator-template-catalog"}, {"_id": 0})
+    return {"catalog": doc.get("catalog") if doc else None, "updatedAt": doc.get("updatedAt") if doc else None}
+
+@api.put("/admin/generator-templates")
+async def admin_generator_templates_update(data: GeneratorTemplateCatalogInput, admin=Depends(admin_user)):
+    catalog = data.catalog or {}
+    for key in ("contents", "logos", "covers"):
+        if not isinstance(catalog.get(key, []), list):
+            raise HTTPException(400, f"Data {key} harus berupa daftar template")
+    await db.settings.update_one(
+        {"id": "generator-template-catalog"},
+        {"$set": {"catalog": catalog, "updatedAt": now(), "updatedBy": admin["id"]}},
+        upsert=True,
+    )
+    await log_activity(admin["id"], "update_generator_templates", None, "generator-template-catalog", "Katalog template generator diperbarui")
+    return {"ok": True, "catalog": catalog}
+
 # ========== Coupons, Demo Seed, Analytics ==========
 
 @api.post("/coupons/validate")
@@ -1561,7 +1734,7 @@ async def demo_seed(user=Depends(current_user)):
     q = quota_for(user)
     if count >= q:
         raise HTTPException(403, "Limit website Anda sudah tercapai. Silakan upgrade paket.")
-    website = {"id": uid(), "userId": user["id"], "businessName": "Kopi Senja", "category": "Coffee Shop", "description": "Kedai kopi kecil dengan biji lokal pilihan dan suasana hangat. Cocok untuk bersantai, berbincang, atau bekerja santai.", "logoUrl": "", "coverImageUrl": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1600&auto=format&fit=crop", "whatsapp": "6281234567890", "phone": "", "email": "halo@kopisenja.id", "instagram": "@kopisenja", "facebook": "", "tiktok": "", "address": "Jl. Kemang Raya No. 12", "city": "Jakarta Selatan", "province": "DKI Jakarta", "postalCode": "12730", "latitude": None, "longitude": None, "customDomain": "", "status": "DRAFT", "slug": "", "themeConfig": {"primary": "#166534", "accent": "#14532D", "style": "warm"}, "aiGeneratedContent": {"heroTitle": "Temukan jeda di setiap teguk.", "heroSubtitle": "Kopi pilihan, suasana hangat, dan cerita yang dekat setiap hari.", "heroCta": "Jelajahi menu", "about": "Kopi Senja adalah kedai kopi kecil di Kemang yang menyajikan biji kopi lokal pilihan. Kami percaya kopi bukan hanya minuman—tapi jeda hangat di tengah hari yang sibuk.", "highlights": ["Biji kopi lokal pilihan", "Suasana hangat & tenang", "Cocok untuk santai dan kerja"], "productHeadline": "Menu favorit", "primaryColor": "#166534", "accentColor": "#14532D", "style": "warm"}, "businessHours": [], "createdAt": now(), "updatedAt": now()}
+    website = {"id": uid(), "userId": user["id"], "businessName": "Kopi Senja", "category": "Coffee Shop", "description": "Kedai kopi kecil dengan biji lokal pilihan dan suasana hangat. Cocok untuk bersantai, berbincang, atau bekerja santai.", "logoUrl": "", "coverImageUrl": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1600&auto=format&fit=crop", "whatsapp": "6281234567890", "phone": "", "email": "halo@kopisenja.id", "instagram": "@kopisenja", "facebook": "", "tiktok": "", "address": "Jl. Kemang Raya No. 12", "city": "Jakarta Selatan", "province": "DKI Jakarta", "postalCode": "12730", "latitude": None, "longitude": None, "customDomain": "", "status": "DRAFT", "slug": "", "themeConfig": {"primary": "#0077B6", "accent": "#03045E", "style": "warm"}, "aiGeneratedContent": {"heroTitle": "Temukan jeda di setiap teguk.", "heroSubtitle": "Kopi pilihan, suasana hangat, dan cerita yang dekat setiap hari.", "heroCta": "Jelajahi menu", "about": "Kopi Senja adalah kedai kopi kecil di Kemang yang menyajikan biji lokal pilihan. Kami percaya kopi bukan hanya minuman—tapi jeda hangat di tengah hari yang sibuk.", "highlights": ["Biji kopi lokal pilihan", "Suasana hangat & tenang", "Cocok untuk santai dan kerja"], "productHeadline": "Menu favorit", "primaryColor": "#0077B6", "accentColor": "#03045E", "style": "warm"}, "businessHours": [], "createdAt": now(), "updatedAt": now()}
     await db.websites.insert_one(website)
     demo_products = [
         {"name": "Es Kopi Gula Aren", "description": "Kopi susu dengan gula aren khas, disajikan dingin.", "price": 28000, "images": []},
@@ -1619,7 +1792,7 @@ async def upsert_wa_contact(phone_raw: str, *, name: str = "", website_name: str
                "name": name or "", "websiteName": website_name or "",
                "categories": [category] if category else [],
                "source": source, "notes": "",
-               "userId": user_id,            # pemilik akun UsahaKu (bila cocok)
+               "userId": user_id,            # pemilik akun Buildza (bila cocok)
                "websiteId": website_id,      # website bisnis milik nomor ini (bila cocok)
                "lastContactAt": t, "createdAt": t}
         await db.wa_contacts.insert_one(doc)
@@ -2067,6 +2240,12 @@ async def check_wa(payload: dict):
     return {"ok": True}
 
 app.include_router(api)
+
+# Search engines conventionally request /sitemap.xml at the site root. Keep the
+# API form available for local tooling, but expose the production-friendly path.
+@app.get("/sitemap.xml")
+async def sitemap_at_root(request: Request):
+    return await sitemap(request)
 cors_origins = [origin.strip().rstrip("/") for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin.strip()]
 cors_origin_regex = (os.environ.get("CORS_ORIGIN_REGEX") or r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$").strip() or None
 app.add_middleware(
@@ -2149,7 +2328,7 @@ async def startup():
     if not await db.users.find_one({"email": admin_email}):
         await db.users.insert_one({
             "id": uid(),
-            "name": "Admin UsahaKu",
+            "name": "Admin Situska",
             "email": admin_email,
             "password_hash": hash_password(admin_password),
             "role": "ADMIN",

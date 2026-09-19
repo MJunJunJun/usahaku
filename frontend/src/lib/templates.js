@@ -5,8 +5,8 @@ export const WEBSITE_TEMPLATES = [
     badge: "Sleek & Professional",
     desc: "Header melayang blur transparan, gradient hero, bento grid modern, cocok untuk semua jenis usaha.",
     icon: "LayoutTemplate",
-    previewGradient: "linear-gradient(135deg, #16A34A, #14532D)",
-    bgTint: "bg-emerald-50/50 text-emerald-700 border-emerald-200",
+    previewGradient: "linear-gradient(135deg, #0077B6, #03045E)",
+    bgTint: "bg-sky-50/50 text-sky-700 border-sky-200",
   },
   {
     id: "warm",
@@ -47,7 +47,7 @@ export const WEBSITE_TEMPLATES = [
 ];
 
 export const COLOR_PALETTES = [
-  { id: "emerald", name: "Emerald Fresh", primary: "#16A34A", accent: "#14532D" },
+  { id: "sky", name: "Situska Blue", primary: "#0077B6", accent: "#03045E" },
   { id: "mocha", name: "Kopi Warm Mocha", primary: "#8B4513", accent: "#3E2723" },
   { id: "ocean", name: "Ocean Professional", primary: "#2563EB", accent: "#1E3A8A" },
   { id: "amber", name: "Sunset Amber", primary: "#D97706", accent: "#78350F" },

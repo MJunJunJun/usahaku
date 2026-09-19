@@ -157,11 +157,23 @@ const normalizeCategory = (category = "") => {
   return PROFILES[category] ? category : "Lainnya";
 };
 
+export const TEMPLATE_CATEGORIES = Object.keys(PROFILES);
+let managedTemplates = null;
+
+// The generator keeps useful built-ins, while the admin catalogue can replace
+// them at runtime without requiring a frontend deployment.
+export const setManagedContentTemplates = (templates) => {
+  managedTemplates = Array.isArray(templates) ? templates : null;
+};
+
 export const getContentTemplates = (category) => {
   const normalized = normalizeCategory(category);
+  const managed = (managedTemplates || []).filter((template) => template.category === normalized);
+  if (managedTemplates) return managed;
   const profile = PROFILES[normalized];
   return VARIANTS.map((variant, index) => ({
     ...variant,
+    id: `${normalized}-${variant.id}`,
     category: normalized,
     heroTitle: profile.heroTitles[index],
     heroSubtitle: SUBTITLE_BUILDERS[index](profile),

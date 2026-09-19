@@ -240,7 +240,7 @@ export function PaymentFlow() {
             <div><small>BANK</small><b>{settings.bankName}</b></div>
             <div><small>ATAS NAMA</small><b>{settings.accountName}</b></div>
             <div><small>NOMOR REKENING</small><b data-testid="bank-account-number">{settings.accountNumber}</b></div>
-            <div><small>TOTAL TRANSFER</small><b data-testid="payment-amount">Rp{money(finalAmount)}{bonusDays > 0 && <small style={{ color: "#166534", display: "block", fontSize: 11 }}>+ {bonusDays} hari bonus</small>}</b></div>
+            <div><small>TOTAL TRANSFER</small><b data-testid="payment-amount">Rp{money(finalAmount)}{bonusDays > 0 && <small style={{ color: "#0369A1", display: "block", fontSize: 11 }}>+ {bonusDays} hari bonus</small>}</b></div>
           </div>
           <div className="coupon-inline">
             <label>

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, ChevronRight, Menu, X, Sparkles } from "lucide-react";
 import { Brand } from "../lib/shared";
-import { APP_NAME, PUBLIC_SITE_HOST } from "../lib/config";
+import { APP_NAME, PUBLIC_SITE_HOST, SEO_ORIGIN } from "../lib/config";
+import { SeoHead, originUrl } from "../lib/seo";
 import "./Landing.css";
 
 function PublicNav() {
@@ -16,6 +17,9 @@ function PublicNav() {
           <a data-testid="nav-how" href="#cara-kerja">Cara kerja</a>
           <a data-testid="nav-pricing" href="#harga">Harga</a>
           <a data-testid="nav-examples" href="#contoh">Contoh</a>
+          <Link data-testid="nav-website-usaha" to="/website-usaha">Website usaha</Link>
+          <Link data-testid="nav-website-umkm" to="/website-umkm">Website UMKM</Link>
+          <Link data-testid="nav-articles" to="/artikel">Artikel</Link>
           <Link data-testid="nav-login" to="/login">Masuk</Link>
           <Link data-testid="nav-register" className="nav-cta" to="/register">Buat Website Gratis <ArrowRight size={15} /></Link>
         </nav>
@@ -38,7 +42,7 @@ const Price = ({ name, price, desc, items, featured, testid }) => (
   </div>
 );
 
-const Example = ({ title, category, color, slug, testid }) => (
+const Example = ({ title, category, description, color, slug, testid }) => (
   <Link data-testid={testid} className="example-card" to={`/site/${slug}`} style={{ background: color }}>
     <div className="example-header">
       <b>{title}</b>
@@ -46,7 +50,7 @@ const Example = ({ title, category, color, slug, testid }) => (
     </div>
     <div className="example-body">
       <small>{category.toUpperCase()}</small>
-      <h4>Cerita usahamu, tampak profesional.</h4>
+      <h4>{description}</h4>
     </div>
   </Link>
 );
@@ -54,13 +58,20 @@ const Example = ({ title, category, color, slug, testid }) => (
 export default function Landing() {
   return (
     <div className="landing">
+      <SeoHead
+        title="Website Usaha Profesional dengan AI | Situska"
+        description="Buat website usaha profesional dengan AI tanpa coding. Masukkan informasi usaha, tambahkan produk, dan buat website siap digunakan dalam beberapa klik."
+        image="/assets/showcase/kopi-senja-cover.png"
+        canonical="/"
+        schema={[{ "@context": "https://schema.org", "@type": "SoftwareApplication", name: APP_NAME, applicationCategory: "BusinessApplication", operatingSystem: "Web", description: "Platform untuk membuat website usaha profesional dengan AI tanpa coding.", offers: { "@type": "Offer", price: "0", priceCurrency: "IDR" } }, { "@context": "https://schema.org", "@type": "Organization", name: APP_NAME, url: SEO_ORIGIN }, { "@context": "https://schema.org", "@type": "WebSite", name: APP_NAME, url: SEO_ORIGIN }]}
+      />
       <PublicNav />
       <main>
         <section className="hero container">
           <div className="hero-copy reveal">
             <div className="eyebrow"><span className="eyebrow-dot" /> Dibuat untuk UMKM Indonesia</div>
-            <h1>Website profesional<br /><em>untuk usahamu.</em></h1>
-            <p className="hero-text">Masukkan informasi usaha, tambahkan produk, lalu biarkan AI membantu membuat website yang siap memperkenalkan bisnismu—tanpa coding, tanpa ribet.</p>
+            <h1>Website usaha<br /><em>siap dalam beberapa klik.</em></h1>
+            <p className="hero-text">Masukkan informasi usaha, tambahkan produk, lalu Situska membantu membuat website yang siap memperkenalkan bisnismu—tanpa coding, tanpa ribet.</p>
             <div className="hero-actions">
               <Link data-testid="hero-register-button" className="btn btn-primary" to="/register">Buat Website Gratis <ArrowRight size={17} /></Link>
               <a data-testid="hero-how-link" className="text-link" href="#cara-kerja">Lihat cara kerja <ChevronRight size={16} /></a>
@@ -120,7 +131,7 @@ export default function Landing() {
         <section id="cara-kerja" className="section container">
           <div className="section-heading">
             <div><div className="eyebrow">CARA YANG LEBIH MUDAH</div><h2>Dari usaha lokal,<br /><span>terlihat profesional.</span></h2></div>
-            <p>{APP_NAME} membantu kamu hadir di dunia digital dalam beberapa langkah sederhana.</p>
+            <p>{APP_NAME} membantu kamu membuat website usaha profesional dalam beberapa langkah sederhana.</p>
           </div>
           <div className="steps">
             <Step n="01" title="Isi informasi usaha" text="Ceritakan nama, kategori, lokasi, dan kontak bisnismu." />
@@ -135,14 +146,14 @@ export default function Landing() {
             <div className="eyebrow">SEMUA YANG KAMU BUTUHKAN</div>
             <h2>Satu tempat untuk<br /><span>mengembangkan usahamu.</span></h2>
             <div className="feature-grid">
-              <Feature icon="✦" title="Website dengan AI" text="Dari data usaha menjadi tampilan website yang meyakinkan." />
+              <Feature icon="✦" title="Website dengan AI" text="Dari informasi usaha menjadi website profesional dengan bantuan AI." />
               <Feature icon="▦" title="Katalog produk" text="Tampilkan produk, harga, dan foto dengan rapi." />
-              <Feature icon="↗" title="Terhubung WhatsApp" text="Pelanggan bisa langsung memesan lewat WhatsApp." />
-              <Feature icon="⌖" title="Siap untuk mobile" text="Tampil sempurna di layar HP pelanggan." />
-              <Feature icon="◉" title="Google Maps" text="Tunjukkan lokasi usahamu dengan jelas." />
-              <Feature icon="✎" title="AI copywriting" text="Konten dibuat rapi otomatis oleh AI." />
-              <Feature icon="◈" title="Multi website" text="Kelola beberapa bisnis dari satu akun." />
-              <Feature icon="✧" title="AI edit" text="Ubah desain hanya dengan mengetik perintah." />
+              <Feature icon="↗" title="Terhubung WhatsApp" text="Pelanggan dapat langsung menghubungi bisnis melalui WhatsApp." />
+              <Feature icon="⌖" title="Siap untuk mobile" text="Website usaha tampil optimal di perangkat mobile." />
+              <Feature icon="◉" title="Google Maps" text="Tampilkan lokasi usaha agar pelanggan mudah menemukan bisnis." />
+              <Feature icon="✎" title="AI copywriting" text="Buat konten website bisnis dengan bantuan AI." />
+              <Feature icon="◈" title="Multi website" text="Kelola beberapa website usaha dari satu akun." />
+              <Feature icon="✧" title="AI edit" text="Edit tampilan website menggunakan instruksi sederhana." />
             </div>
           </div>
         </section>
@@ -153,12 +164,12 @@ export default function Landing() {
             <p>AI menyesuaikan gaya visual sesuai karakter bisnismu.</p>
           </div>
           <div className="example-grid">
-            <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" slug="demo-kopi-senja" color="linear-gradient(135deg,#14532d,#166534)" />
-            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" slug="demo-rumah-roti" color="linear-gradient(135deg,#166534,#15803d)" />
-            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" slug="demo-nusa-craft" color="linear-gradient(135deg,#15803d,#16a34a)" />
-            <Example testid="example-barber" title="Barber Co" category="Barbershop" slug="demo-barber-co" color="linear-gradient(135deg,#166534,#22c55e)" />
-            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" slug="demo-sari-beauty" color="linear-gradient(135deg,#14532d,#22c55e)" />
-            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" slug="demo-warung-sundari" color="linear-gradient(135deg,#166534,#4ade80)" />
+            <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" description="Contoh website usaha coffee shop dengan menu dan lokasi." slug="demo-kopi-senja" color="linear-gradient(135deg,#03045E,#0077B6)" />
+            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" description="Contoh website bakery dengan katalog roti dan informasi usaha." slug="demo-rumah-roti" color="linear-gradient(135deg,#03045E,#00B4D8)" />
+            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" description="Contoh website fashion untuk menampilkan koleksi pilihan." slug="demo-nusa-craft" color="linear-gradient(135deg,#0077B6,#00B4D8)" />
+            <Example testid="example-barber" title="Barber Co" category="Barbershop" description="Contoh website barbershop dengan layanan dan kontak cepat." slug="demo-barber-co" color="linear-gradient(135deg,#03045E,#0077B6)" />
+            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" description="Contoh website beauty untuk layanan perawatan dan reservasi." slug="demo-sari-beauty" color="linear-gradient(135deg,#0077B6,#00B4D8)" />
+            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" description="Contoh website restoran dengan menu, lokasi, dan informasi bisnis." slug="demo-warung-sundari" color="linear-gradient(135deg,#03045E,#00B4D8)" />
           </div>
         </section>
 

@@ -1,12 +1,10 @@
 .landing{
-  --landing-primary:#16a34a;
-  --landing-primary-dark:#14532d;
-  --landing-primary-soft:#f0fdf4;
+  --landing-primary:#0077B6;
+  --landing-primary-dark:#03045E;
+  --landing-primary-soft:#F7FBFD;
 }
 
 .landing .eyebrow,
-.landing h1 em,
-.landing h2 span,
 .landing .text-link:hover,
 .landing .step>b,
 .landing .feature>span,
@@ -35,9 +33,37 @@
   background:var(--landing-primary-dark);
 }
 
-.landing .feature-band,
-.landing .problem-grid>div{
+.landing h1 em,
+.landing h2 span{
+  color:var(--landing-primary-dark);
+}
+
+.landing .feature-band{
   background:var(--landing-primary-soft);
+  border-top:1px solid #E2F3F8;
+  border-bottom:1px solid #E2F3F8;
+}
+
+.landing .problem-grid>div{
+  background:#fff;
+  border:1px solid #D5EEF5;
+  border-top:3px solid #90E0EF;
+  box-shadow:0 8px 22px rgba(3,4,94,.04);
+}
+
+.landing .problem-grid>div:hover{
+  border-top-color:var(--landing-primary);
+  box-shadow:0 12px 26px rgba(3,4,94,.08);
+}
+
+.landing .feature{
+  border:1px solid #E2F3F8;
+  box-shadow:0 8px 20px rgba(3,4,94,.035);
+}
+
+.landing .feature:hover{
+  border-color:#90E0EF;
+  box-shadow:0 12px 26px rgba(3,4,94,.075);
 }
 
 .landing .hero{
@@ -107,7 +133,7 @@
     left:0;
     right:0;
     background:#fff;
-    border-bottom:1px solid #e8eee8;
+    border-bottom:1px solid #E2EAF0;
     padding:20px 28px;
     flex-direction:column;
     align-items:flex-start;

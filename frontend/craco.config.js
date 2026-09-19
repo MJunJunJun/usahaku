@@ -125,6 +125,9 @@ let webpackConfig = {
 };
 
 webpackConfig.devServer = (devServerConfig) => {
+  // SEO landing pages and article URLs must remain reachable on a direct
+  // visit or refresh, not only after navigating from the React homepage.
+  devServerConfig.historyApiFallback = true;
   // Add health check endpoints if enabled
   if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
     const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
@@ -162,7 +165,24 @@ if (isDevServer) {
 }
 
 const configureDevServer = webpackConfig.devServer;
-webpackConfig.devServer = (devServerConfig) =>
-  makeDevServerV5Compatible(configureDevServer(devServerConfig));
+webpackConfig.devServer = (devServerConfig) => {
+  const finalConfig = makeDevServerV5Compatible(configureDevServer(devServerConfig));
+  // Applied last because optional visual-edit tooling can replace dev-server
+  // options. This keeps direct SEO URLs working in local development too.
+  finalConfig.historyApiFallback = { index: "/index.html", disableDotRule: true };
+  const previousSetupMiddlewares = finalConfig.setupMiddlewares;
+  finalConfig.setupMiddlewares = (middlewares, devServer) => {
+    const resolved = previousSetupMiddlewares ? previousSetupMiddlewares(middlewares, devServer) : middlewares;
+    resolved.unshift({
+      name: "buildza-spa-fallback",
+      middleware: (req, _res, next) => {
+        if (req.method === "GET" && !req.url.startsWith("/api/") && !req.url.includes(".")) req.url = "/index.html";
+        next();
+      },
+    });
+    return resolved;
+  };
+  return finalConfig;
+};
 
 module.exports = webpackConfig;

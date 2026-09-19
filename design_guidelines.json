@@ -1,7 +1,7 @@
 {
-  "app_name": "USAHAKU",
-  "tagline": "Website Profesional untuk Usahamu, Dibuat dengan AI.",
-  "archetype": "ORGANIC & EARTHY / SAAS PROFESSIONAL",
+  "app_name": "BUILDZA",
+  "tagline": "Website Usaha Siap dalam Beberapa Klik.",
+  "archetype": "CLEAR & PROFESSIONAL / SAAS BLUE",
   "typography": {
     "heading_font": "Plus Jakarta Sans, sans-serif",
     "body_font": "Inter, sans-serif",
@@ -15,9 +15,9 @@
     }
   },
   "colors": {
-    "primary": "#16A34A",
-    "primary_dark": "#14532D",
-    "primary_light": "#F0FDF4",
+    "primary": "#0EA5E9",
+    "primary_dark": "#075985",
+    "primary_light": "#F0F9FF",
     "background": "#FFFFFF",
     "card_bg": "#FFFFFF",
     "text_dark": "#111827",

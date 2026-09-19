@@ -21,8 +21,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@usahaku.id}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      APP_NAME: ${APP_NAME:-UsahaKu}
-      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-hello@usahaku.id}
+      APP_NAME: ${APP_NAME:-Situska}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-hello@buildza.id}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
       COOKIE_SECURE: ${COOKIE_SECURE:-auto}
@@ -42,7 +42,7 @@ services:
       context: ./frontend
       args:
         REACT_APP_BACKEND_URL: ""
-        REACT_APP_BRAND_NAME: ${APP_NAME:-UsahaKu}
+        REACT_APP_BRAND_NAME: ${APP_NAME:-Situska}
         REACT_APP_PUBLIC_SITE_HOST: ${PUBLIC_SITE_HOST:-}
     restart: unless-stopped
     depends_on:
@@ -68,7 +68,7 @@ services:
       - "rest"
       - "--basic-auth=admin:admin123"
       - "--webhook=http://backend:8000/api/wa/webhook?secret=usahaku_wa_secret_2026"
-      - "--os=UsahaKu"
+      - "--os=Situska"
       - "--account-validation=false"
       - "--autoreply=false"
       - "--webhook-secret=usahaku_wa_secret_2026"

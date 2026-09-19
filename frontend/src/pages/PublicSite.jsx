@@ -6,6 +6,7 @@ import { Brand, Loading, Button } from "../lib/shared";
 import PublicWebsiteView from "./PublicWebsiteView";
 import { getShowcaseSite } from "../lib/showcaseData";
 import { APP_NAME } from "../lib/config";
+import { SeoHead, originUrl } from "../lib/seo";
 
 export function PublicRoute() {
   const { slug } = useParams();
@@ -27,7 +28,19 @@ export function PublicRoute() {
   if (error) return <NotFoundPage />;
   if (!data) return <Loading text="Membuka website..." />;
   if (data.maintenance) return <MaintenancePage slug={slug} businessName={data.businessName} />;
-  return <PublicWebsiteView data={data} />;
+  const city = data.city || "Indonesia";
+  const description = data.description || `${data.businessName} adalah ${data.category} di ${city}. Lihat produk, informasi usaha, lokasi, jam buka, dan cara menghubungi kami.`;
+  const image = data.coverImageUrl ? (data.coverImageUrl.startsWith("http") ? data.coverImageUrl : `${originUrl()}${data.coverImageUrl}`) : "";
+  const siteUrl = `${originUrl()}/site/${data.slug}`;
+  const category = (data.category || "").toLowerCase();
+  const businessType = category.includes("coffee") || category.includes("cafe") ? "CafeOrCoffeeShop" : category.includes("restaurant") ? "Restaurant" : category.includes("bakery") ? "Bakery" : category.includes("barber") ? "Barbershop" : category.includes("retail") || category.includes("toko") ? "Store" : category.includes("jasa") ? "ProfessionalService" : "LocalBusiness";
+  const schema = {
+    "@context": "https://schema.org", "@type": businessType, name: data.businessName,
+    description, url: siteUrl, image, telephone: data.phone || data.whatsapp || undefined,
+    address: data.address ? { "@type": "PostalAddress", streetAddress: data.address, addressLocality: data.city || undefined, addressRegion: data.province || undefined, addressCountry: "ID" } : undefined,
+    sameAs: [data.instagram, data.facebook, data.tiktok].filter(Boolean),
+  };
+  return <><SeoHead title={`${data.businessName} — ${data.category} di ${city}`} description={description} image={image} canonical={`/site/${data.slug}`} robots={data.seoNoIndex ? "noindex, nofollow" : "index, follow"} schema={schema} /><PublicWebsiteView data={data} /></>;
 }
 
 function MaintenancePage({ slug, businessName }) {

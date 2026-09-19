@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
 import "./App.css";
 import Landing from "./pages/Landing";
 import VerifyWA from "./pages/VerifyWA";
@@ -8,22 +9,36 @@ import { Dashboard, WebsiteList, CreateWebsite, WebsiteDetail, ManualEdit, Notif
 import { SectionManager } from "./pages/Sections";
 import { Subscription, PaymentFlow, PaymentDetail } from "./pages/Subscription";
 import { PublicRoute, OwnerAccess } from "./pages/PublicSite";
-import { AdminOverview, AdminUsers, AdminUserDetail, AdminPayments, AdminPaymentDetail, AdminPlans, AdminActivity, AdminSettings, AdminWebsites } from "./pages/Admin";
+import { AdminOverview, AdminUsers, AdminUserDetail, AdminPayments, AdminPaymentDetail, AdminPlans, AdminActivity, AdminSettings, AdminWebsites, AdminGeneratorTemplates } from "./pages/Admin";
 import { UserCoupons, AdminCoupons } from "./pages/Coupons";
 import { WaCenter, WaContacts } from "./pages/WaAdmin";
+import { AdminArticles, AdminBuildzaArticles, PublicArticle, PublicBuildzaArticle, PublicBuildzaArticles, WebsiteArticles } from "./pages/Articles";
+import { SEO_PAGE_KEYS, SeoLandingPage } from "./pages/SeoPages";
+import { loadTemplateCatalog } from "./lib/generatorTemplateCatalog";
+import { NoIndex } from "./lib/seo";
+
+const TemplateCatalogBootstrap = ({ children }) => {
+  const [, setVersion] = useState(0);
+  useEffect(() => { loadTemplateCatalog().then(() => setVersion((v) => v + 1)).catch(() => {}); }, []);
+  return children;
+};
 
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
+      <TemplateCatalogBootstrap><Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/login" element={<AuthPage />} />
-        <Route path="/register" element={<AuthPage register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/verify-wa" element={<VerifyWA />} />
+        <Route path="/login" element={<><NoIndex /><AuthPage /></>} />
+        <Route path="/register" element={<><NoIndex /><AuthPage register /></>} />
+        <Route path="/forgot-password" element={<><NoIndex /><ForgotPassword /></>} />
+        <Route path="/reset-password" element={<><NoIndex /><ResetPassword /></>} />
+        <Route path="/verify-wa" element={<><NoIndex /><VerifyWA /></>} />
+        <Route path="/artikel" element={<PublicBuildzaArticles />} />
+        <Route path="/artikel/:articleSlug" element={<PublicBuildzaArticle />} />
+        {SEO_PAGE_KEYS.map((pageKey) => <Route key={pageKey} path={`/${pageKey}`} element={<SeoLandingPage pageKey={pageKey} />} />)}
+        <Route path="/site/:slug/artikel/:articleSlug" element={<PublicArticle />} />
         <Route path="/site/:slug" element={<PublicRoute />} />
-        <Route path="/owner-access/:slug" element={<OwnerAccess />} />
+        <Route path="/owner-access/:slug" element={<><NoIndex /><OwnerAccess /></>} />
 
         <Route path="/dashboard" element={<UserShell><Dashboard /></UserShell>} />
         <Route path="/dashboard/websites" element={<UserShell><WebsiteList /></UserShell>} />
@@ -31,6 +46,7 @@ export default function App() {
         <Route path="/dashboard/websites/:id" element={<UserShell><WebsiteDetail /></UserShell>} />
         <Route path="/dashboard/websites/:id/edit" element={<UserShell><ManualEdit /></UserShell>} />
         <Route path="/dashboard/websites/:id/sections" element={<UserShell><SectionManager /></UserShell>} />
+        <Route path="/dashboard/websites/:id/articles" element={<UserShell><WebsiteArticles /></UserShell>} />
         <Route path="/dashboard/subscription" element={<UserShell><Subscription /></UserShell>} />
         <Route path="/dashboard/subscription/pay" element={<UserShell><PaymentFlow /></UserShell>} />
         <Route path="/dashboard/subscription/payment/:pid" element={<UserShell><PaymentDetail /></UserShell>} />
@@ -41,9 +57,12 @@ export default function App() {
         <Route path="/admin/users" element={<AdminShell><AdminUsers /></AdminShell>} />
         <Route path="/admin/users/:id" element={<AdminShell><AdminUserDetail /></AdminShell>} />
         <Route path="/admin/websites" element={<AdminShell><AdminWebsites /></AdminShell>} />
+        <Route path="/admin/articles" element={<AdminShell><AdminArticles /></AdminShell>} />
+        <Route path="/admin/buildza-articles" element={<AdminShell><AdminBuildzaArticles /></AdminShell>} />
         <Route path="/admin/payment-requests" element={<AdminShell><AdminPayments /></AdminShell>} />
         <Route path="/admin/payment-requests/:id" element={<AdminShell><AdminPaymentDetail /></AdminShell>} />
         <Route path="/admin/plans" element={<AdminShell><AdminPlans /></AdminShell>} />
+        <Route path="/admin/generator-templates" element={<AdminShell><AdminGeneratorTemplates /></AdminShell>} />
         <Route path="/admin/coupons" element={<AdminShell><AdminCoupons /></AdminShell>} />
         <Route path="/admin/wa-contacts" element={<AdminShell><WaContacts /></AdminShell>} />
         <Route path="/admin/whatsapp" element={<AdminShell><WaCenter /></AdminShell>} />
@@ -51,7 +70,7 @@ export default function App() {
         <Route path="/admin/settings" element={<AdminShell><AdminSettings /></AdminShell>} />
 
         <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+      </Routes></TemplateCatalogBootstrap>
     </BrowserRouter>
   );
 }

@@ -1,11 +1,11 @@
 /* VerifyWA.css - tombol verifikasi hijau seperti beranda */
 
 :root {
-  --green: #16a34a;
-  --dark: #14532d;
-  --green-hover: #15803d;
-  --green-shadow: rgba(20, 83, 45, 0.14);
-  --green-shadow-hover: rgba(20, 83, 45, 0.25);
+  --blue: #0077B6;
+  --dark: #03045E;
+  --blue-hover: #00B4D8;
+  --blue-shadow: rgba(20, 83, 45, 0.14);
+  --blue-shadow-hover: rgba(20, 83, 45, 0.25);
 }
 
 .verify-page {
@@ -39,8 +39,8 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: #dcfce7;
-  color: var(--green);
+  background: #E0F2FE;
+  color: var(--blue);
   margin-bottom: 1rem;
 }
 
@@ -78,7 +78,7 @@
 
 .form-info {
   padding: 0.75rem 1rem;
-  background: #ecfdf5;
+  background: #F0F9FF;
   border: 1px solid #a7f3d0;
   border-radius: 8px;
   color: #065f46;
@@ -126,7 +126,7 @@ form input {
 
 form input:focus {
   outline: none;
-  border-color: var(--green);
+  border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
 }
 
@@ -148,16 +148,16 @@ form input:disabled {
   font-weight: 700;
   cursor: pointer;
   width: 100%;
-  background: var(--green);
+  background: var(--blue);
   color: white;
-  box-shadow: 0 4px 12px var(--green-shadow);
+  box-shadow: 0 4px 12px var(--blue-shadow);
   transition: all 0.2s ease;
 }
 
 .btn-verify:hover:not(:disabled) {
-  background: var(--green-hover);
+  background: var(--blue-hover);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px var(--green-shadow-hover);
+  box-shadow: 0 8px 20px var(--blue-shadow-hover);
 }
 
 .btn-verify:active:not(:disabled) {
@@ -173,8 +173,8 @@ form input:disabled {
 /* Tombol ghost (kirim ulang, batal) */
 .btn-ghost {
   background: transparent;
-  color: var(--green);
-  border: 1px solid var(--green);
+  color: var(--blue);
+  border: 1px solid var(--blue);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -189,7 +189,7 @@ form input:disabled {
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: #f0fdf4;
+  background: #F0F9FF;
 }
 
 .btn-ghost:disabled {

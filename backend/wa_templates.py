@@ -1,5 +1,5 @@
 """
-Template pesan WhatsApp terpusat untuk seluruh aplikasi UsahaKu.
+Template pesan WhatsApp terpusat untuk seluruh aplikasi Situska.
 Edit teks di sini saja — semua modul (notifikasi, auto-reply, broadcast)
 mengambil dari WA_TEMPLATES lewat render_template().
 Placeholder memakai format {nama_kunci} dan diisi lewat keyword arguments.
@@ -25,7 +25,7 @@ WA_TEMPLATES = {
     "approved": (
         "Halo {nama}, pesanan #{id} Anda SUDAH DISETUJUI ✅\n"
         "Paket *{paket}* aktif sampai {berlaku}.{bonus}\n\n"
-        "Terima kasih telah menggunakan UsahaKu!"
+        "Terima kasih telah menggunakan Situska!"
     ),
     "rejected": (
         "Halo {nama}, maaf pesanan #{id} ditolak.\n"

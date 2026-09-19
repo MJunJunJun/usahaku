@@ -1,8 +1,9 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, LogOut, Plus, Sparkles, Store, CreditCard, Settings, Bell, Users, ClipboardList, ScrollText, Cog, Ticket, MessageSquare, Radio, BookUser } from "lucide-react";
+import { LayoutDashboard, LogOut, Plus, Sparkles, Store, CreditCard, Settings, Bell, Users, ClipboardList, ScrollText, Cog, Ticket, MessageSquare, Radio, BookUser, LayoutTemplate, FileText } from "lucide-react";
 import { api, daysUntil } from "./api";
 import { APP_NAME } from "./config";
+import { NoIndex } from "./seo";
 
 export const Brand = ({ light = false, mini = false }) => (
   <Link data-testid="brand-logo" className={`brand ${light ? "brand-light" : ""} ${mini ? "brand-mini" : ""}`} to="/">
@@ -40,12 +41,12 @@ export const UserSidebar = ({ user, showTrial = true }) => {
     <aside className="app-sidebar">
       <Brand />
       <div className="side-label">RUANG KERJA</div>
-      <Link data-testid="sidebar-dashboard" to="/dashboard"><LayoutDashboard size={17} />Ringkasan</Link>
-      <Link data-testid="sidebar-websites" to="/dashboard/websites"><Store size={17} />Website saya</Link>
-      <Link data-testid="sidebar-create" to="/dashboard/websites/create" className="side-create"><Plus size={17} />{status === "TRIAL_PENDING" ? "Buat website Gratis" : "Buat website"}</Link>
-      <Link data-testid="sidebar-subscription" to="/dashboard/subscription"><CreditCard size={17} />Paket & billing</Link>
-      <Link data-testid="sidebar-coupons" to="/dashboard/coupons"><Ticket size={17} />Kupon saya</Link>
-      <Link data-testid="sidebar-notifications" to="/dashboard/notifications"><Bell size={17} />Notifikasi</Link>
+      <NavLink end data-testid="sidebar-dashboard" to="/dashboard"><LayoutDashboard size={17} />Ringkasan</NavLink>
+      <NavLink data-testid="sidebar-websites" to="/dashboard/websites"><Store size={17} />Website saya</NavLink>
+      <NavLink data-testid="sidebar-create" to="/dashboard/websites/create" className="side-create"><Plus size={17} />{status === "TRIAL_PENDING" ? "Buat website Gratis" : "Buat website"}</NavLink>
+      <NavLink data-testid="sidebar-subscription" to="/dashboard/subscription"><CreditCard size={17} />Paket & billing</NavLink>
+      <NavLink data-testid="sidebar-coupons" to="/dashboard/coupons"><Ticket size={17} />Kupon saya</NavLink>
+      <NavLink data-testid="sidebar-notifications" to="/dashboard/notifications"><Bell size={17} />Notifikasi</NavLink>
       <div className="side-spacer" />
       {showTrial && (
         <div className="trial-mini">
@@ -79,16 +80,19 @@ export const AdminSidebar = () => {
     <aside className="app-sidebar admin-sidebar">
       <Brand />
       <div className="side-label">ADMIN PANEL</div>
-      <Link data-testid="admin-sidebar-overview" to="/admin"><LayoutDashboard size={17} />Overview</Link>
-      <Link data-testid="admin-sidebar-users" to="/admin/users"><Users size={17} />Pengguna</Link>
-      <Link data-testid="admin-sidebar-websites" to="/admin/websites"><Store size={17} />Website</Link>
-      <Link data-testid="admin-sidebar-payments" to="/admin/payment-requests"><ClipboardList size={17} />Pembayaran</Link>
-      <Link data-testid="admin-sidebar-plans" to="/admin/plans"><CreditCard size={17} />Paket</Link>
-      <Link data-testid="admin-sidebar-coupons" to="/admin/coupons"><Ticket size={17} />Kupon</Link>
-      <Link data-testid="admin-sidebar-wa-contacts" to="/admin/wa-contacts"><BookUser size={17} />Kontak WA</Link>
-      <Link data-testid="admin-sidebar-whatsapp" to="/admin/whatsapp"><Radio size={17} />WhatsApp</Link>
-      <Link data-testid="admin-sidebar-logs" to="/admin/activity-logs"><ScrollText size={17} />Aktivitas</Link>
-      <Link data-testid="admin-sidebar-settings" to="/admin/settings"><Cog size={17} />Pengaturan</Link>
+      <NavLink end data-testid="admin-sidebar-overview" to="/admin"><LayoutDashboard size={17} />Overview</NavLink>
+      <NavLink data-testid="admin-sidebar-users" to="/admin/users"><Users size={17} />Pengguna</NavLink>
+      <NavLink data-testid="admin-sidebar-websites" to="/admin/websites"><Store size={17} />Website</NavLink>
+      <NavLink data-testid="admin-sidebar-buildza-articles" to="/admin/buildza-articles"><FileText size={17} />Artikel Situska</NavLink>
+      <NavLink data-testid="admin-sidebar-articles" to="/admin/articles"><FileText size={17} />Artikel</NavLink>
+      <NavLink data-testid="admin-sidebar-payments" to="/admin/payment-requests"><ClipboardList size={17} />Pembayaran</NavLink>
+      <NavLink data-testid="admin-sidebar-plans" to="/admin/plans"><CreditCard size={17} />Paket</NavLink>
+      <NavLink data-testid="admin-sidebar-generator-templates" to="/admin/generator-templates"><LayoutTemplate size={17} />Template generator</NavLink>
+      <NavLink data-testid="admin-sidebar-coupons" to="/admin/coupons"><Ticket size={17} />Kupon</NavLink>
+      <NavLink data-testid="admin-sidebar-wa-contacts" to="/admin/wa-contacts"><BookUser size={17} />Kontak WA</NavLink>
+      <NavLink data-testid="admin-sidebar-whatsapp" to="/admin/whatsapp"><Radio size={17} />WhatsApp</NavLink>
+      <NavLink data-testid="admin-sidebar-logs" to="/admin/activity-logs"><ScrollText size={17} />Aktivitas</NavLink>
+      <NavLink data-testid="admin-sidebar-settings" to="/admin/settings"><Cog size={17} />Pengaturan</NavLink>
       <div className="side-spacer" />
       <Link data-testid="admin-sidebar-user-mode" to="/dashboard" className="admin-switch"><Settings size={15} />Mode pengguna</Link>
       <button data-testid="admin-sidebar-logout" className="logout" onClick={async () => { await api.post("/auth/logout"); nav("/"); }}>
@@ -109,7 +113,7 @@ export const UserShell = ({ children }) => {
   if (!user) return <Loading text="Menyiapkan ruang kerja..." />;
   if (user.role === "ADMIN") return <AdminShell>{children}</AdminShell>;
   const showTrial = (websiteCount === null) ? false : (user.subscriptionStatus !== "TRIAL_ACTIVE" || websiteCount > 0);
-  return <div className="app-shell"><UserSidebar user={user} showTrial={showTrial} /><main className="app-main">{children}</main></div>;
+  return <div className="app-shell"><NoIndex /><UserSidebar user={user} showTrial={showTrial} /><main className="app-main">{children}</main></div>;
 };
 
 export const AdminShell = ({ children }) => {
@@ -119,7 +123,7 @@ export const AdminShell = ({ children }) => {
     api.get("/auth/me").then(r => { if (r.data.role !== "ADMIN") nav("/dashboard"); else setUser(r.data); }).catch(() => nav("/login"));
   }, [nav]);
   if (!user) return <Loading text="Memuat panel admin..." />;
-  return <div className="app-shell admin-shell"><AdminSidebar /><main className="app-main">{children}</main></div>;
+  return <div className="app-shell admin-shell"><NoIndex /><AdminSidebar /><main className="app-main">{children}</main></div>;
 };
 
 export const StatusBadge = ({ status }) => {

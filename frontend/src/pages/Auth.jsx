@@ -12,8 +12,8 @@ function AuthSide() {
       <Brand light />
       <div>
         <div className="eyebrow light-eyebrow">DIGITALISASI USAHA</div>
-        <h1>Usahamu punya cerita.<br /><em>Biarkan lebih banyak<br />orang menemukannya.</em></h1>
-        <p>Website profesional yang dibuat dengan bantuan AI—untuk kamu yang punya banyak hal lain untuk dikerjakan.</p>
+        <h1>Website usahamu,<br /><em>siap dalam beberapa<br />klik.</em></h1>
+        <p>Situska membantu kamu membuat website profesional tanpa coding—supaya kamu bisa fokus menjalankan usaha.</p>
       </div>
       <span className="auth-quote">"Sekarang pelanggan baru bisa menemukan kami bahkan saat toko sedang tutup."<b>— Rina, Kopi Senja</b></span>
     </div>

@@ -12,7 +12,7 @@ const CATEGORY_SLUGS = {
 };
 
 const PALETTES = [
-  ["#14532d", "#22c55e"], ["#78350f", "#f59e0b"], ["#172554", "#3b82f6"],
+  ["#03045E", "#00B4D8"], ["#78350f", "#f59e0b"], ["#172554", "#3b82f6"],
   ["#4c1d95", "#a855f7"], ["#831843", "#ec4899"], ["#134e4a", "#14b8a6"],
   ["#1f2937", "#64748b"], ["#7c2d12", "#fb923c"], ["#312e81", "#818cf8"],
   ["#064e3b", "#fbbf24"],
@@ -51,6 +51,12 @@ const normalizeCategory = (category = "") => {
   return CATEGORY_SLUGS[category] ? category : "Lainnya";
 };
 
+let managedImageTemplates = null;
+export const setManagedImageTemplates = (templates) => {
+  managedImageTemplates = templates && typeof templates === "object" ? templates : null;
+};
+export const LOGO_STYLE_OPTIONS = LOGO_STYLE_LABELS.map((label, index) => ({ id: `logo-${index + 1}`, label, styleIndex: index }));
+
 const initials = (name = "") => {
   const chars = name.trim().split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2);
   return (chars || "U").toUpperCase().replace(/[^A-Z0-9]/g, "U");
@@ -87,14 +93,29 @@ const logoSvg = (businessName, index, selectedColor = "") => {
 export const getLogoTemplates = (_category, businessName, selectedColor = "") => {
   // Category stays in the signature so all template pickers share one API;
   // the monogram uses the business name and works consistently for any category.
-  return VARIANTS.map(([id], index) => ({ id, label: LOGO_STYLE_LABELS[index], url: logoSvg(businessName, index, selectedColor) }));
+  const managed = managedImageTemplates?.logos;
+  const sources = Array.isArray(managed) ? managed : LOGO_STYLE_OPTIONS;
+  return sources.map((item, index) => ({
+    id: item.id || `logo-${index + 1}`,
+    label: item.label || LOGO_STYLE_LABELS[item.styleIndex ?? index] || `Logo ${index + 1}`,
+    url: item.url || logoSvg(businessName, Number.isInteger(item.styleIndex) ? item.styleIndex : index % LOGO_STYLE_LABELS.length, selectedColor || item.color || ""),
+  }));
 };
 
 export const getCoverTemplates = (category) => {
   const normalized = normalizeCategory(category);
+  const managed = (managedImageTemplates?.covers || []).filter((item) => item.category === normalized);
+  if (Array.isArray(managedImageTemplates?.covers)) return managed.map((item, index) => ({
+    id: item.id || `cover-${index + 1}`,
+    label: item.label || `Template ${normalized} ${index + 1}`,
+    url: item.url,
+    position: item.position || "center",
+    size: item.size || "cover",
+    filter: item.filter || "none",
+  }));
   const slug = CATEGORY_SLUGS[normalized];
   return VARIANTS.map(([id, _label, position, size, filter], index) => ({
-    id,
+    id: `${normalized}-${id}`,
     label: `Template ${normalized} ${index + 1}`,
     // Every category owns ten physical cover files. Keeping the path in the
     // template (rather than deriving it in the component) makes selection,

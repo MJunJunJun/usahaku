@@ -70,8 +70,8 @@ const getCategoryCover = (category, name) => {
 
 export default function PublicWebsiteView({ data, embedded = false, device = "desktop" }) {
   const c = data.aiGeneratedContent || {};
-  const primary = data.themeConfig?.primary || c.primaryColor || "#16A34A";
-  const accent = data.themeConfig?.accent || c.accentColor || "#14532D";
+  const primary = data.themeConfig?.primary || c.primaryColor || "#0077B6";
+  const accent = data.themeConfig?.accent || c.accentColor || "#03045E";
   const fixUrl = resolveMediaUrl;
 
   const [activeFaq, setActiveFaq] = useState(null);

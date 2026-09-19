@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile } from "lucide-react";
+import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile, FileText } from "lucide-react";
 import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
@@ -16,7 +16,7 @@ const Stat = ({ label, value, icon }) => (
 
 const WebsiteCard = ({ w }) => (
   <Link data-testid={`website-card-${w.id}`} className="website-card" to={`/dashboard/websites/${w.id}`}>
-    <div className="website-thumb" style={{ background: w.themeConfig?.primary ? `linear-gradient(135deg, ${w.themeConfig.primary}, #14532d)` : undefined }}>
+    <div className="website-thumb" style={{ background: w.themeConfig?.primary ? `linear-gradient(135deg, ${w.themeConfig.primary}, ${w.themeConfig?.accent || w.themeConfig.primary})` : undefined }}>
       <div className="thumb-nav"><b>{w.businessName}</b><i /></div>
       <div className="thumb-hero" style={{ backgroundImage: `url(${resolveMediaUrl(w.coverImageUrl) || "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=500&auto=format&fit=crop"})` }} />
       <div className="thumb-bottom"><span>{w.category}</span><span>{w.productCount || 0} produk</span></div>
@@ -139,7 +139,7 @@ export function WebsiteList() {
 
 const CATEGORIES = ["Coffee Shop", "Restaurant", "Bakery", "Fashion", "Beauty", "Barbershop", "Retail", "Jasa", "Pendidikan", "Lainnya"];
 const LOGO_COLORS = [
-  "#14532d", "#0f766e", "#1d4ed8", "#38bdf8", "#06b6d4", "#1877f2",
+  "#075985", "#0f766e", "#1d4ed8", "#38bdf8", "#06b6d4", "#1877f2",
   "#7e22ce", "#be185d", "#dc2626", "#eab308", "#c2410c", "#6b7280", "#1f2937",
 ];
 
@@ -154,7 +154,7 @@ export function CreateWebsite() {
   }));
   const [contentTemplateId, setContentTemplateId] = useState(initialContentTemplate.id);
   const [logoTemplateId, setLogoTemplateId] = useState(initialImages.logo.id);
-  const [logoColor, setLogoColor] = useState("#14532d");
+  const [logoColor, setLogoColor] = useState("#0077B6");
   const [coverTemplateId, setCoverTemplateId] = useState(initialImages.cover.id);
   const [form, setForm] = useState({ businessName: "", storeSlug: "", category: "Coffee Shop", description: initialContentTemplate.description, logoUrl: initialImages.logo.url, coverImageUrl: initialImages.cover.url, whatsapp: "", phone: "", email: "", instagram: "", facebook: "", tiktok: "", address: "", city: "", province: "" });
   const [products, setProducts] = useState([{ name: "", description: "", price: "", images: [] }]);
@@ -328,7 +328,7 @@ export function CreateWebsite() {
           <label>Jenis usaha<select data-testid="business-category-select" value={form.category} onChange={e => changeCategory(e.target.value)}>{CATEGORIES.map(x => <option key={x}>{x}</option>)}</select></label>
           <label className="full">Alamat toko
             <input data-testid="store-address-input" value={form.storeSlug} onChange={e => { setSlugTouched(true); set("storeSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-")); setSlugState(""); }} onBlur={checkStoreSlug} placeholder="contoh: kopi-senja" required />
-            <small className={slugState.startsWith("✓") ? "text-emerald-600" : slugState ? "text-red-600" : ""}>Alamat ini menjadi link toko kamu. Harus unik dan tidak dapat diubah setelah website Gratis dipublikasikan. {slugState}</small>
+            <small className={slugState.startsWith("✓") ? "text-sky-600" : slugState ? "text-red-600" : ""}>Alamat ini menjadi link toko kamu. Harus unik dan tidak dapat diubah setelah website Gratis dipublikasikan. {slugState}</small>
           </label>
               <div className="full compact-template-field">
                 <div className="field-heading-row">
@@ -441,7 +441,7 @@ export function CreateWebsite() {
                       onClick={() => setSelectedTemplate(tpl.id)}
                       className={`relative cursor-pointer rounded-xl border p-4 transition ${
                         active
-                          ? "border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-400/30 shadow-md"
+                          ? "border-sky-500 bg-sky-50/40 ring-2 ring-sky-400/30 shadow-md"
                           : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                       }`}
                     >
@@ -449,7 +449,7 @@ export function CreateWebsite() {
                         <span className="text-[11px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                           {tpl.badge}
                         </span>
-                        {active && <CheckCircle2 size={18} className="text-emerald-600" />}
+                        {active && <CheckCircle2 size={18} className="text-sky-600" />}
                       </div>
                       <h4 className="text-sm font-bold text-slate-900">{tpl.name}</h4>
                       <p className="mt-1 text-xs text-slate-500 line-clamp-2">{tpl.desc}</p>
@@ -473,7 +473,7 @@ export function CreateWebsite() {
                       onClick={() => handlePaletteSelect(pal)}
                       className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition ${
                         active
-                          ? "border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-400/20"
+                          ? "border-sky-500 bg-sky-50/60 ring-2 ring-sky-400/20"
                           : "border-slate-200 bg-white hover:bg-slate-50"
                       }`}
                     >
@@ -507,7 +507,7 @@ export function CreateWebsite() {
             {/* Ringkasan AI Generate */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-                <Sparkles size={16} className="text-emerald-600" />
+                <Sparkles size={16} className="text-sky-600" />
                 <span>Website {form.businessName || "Usaha"} Siap Dibuat dengan AI</span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
@@ -576,6 +576,7 @@ export function WebsiteDetail() {
           <p>{w.category} · <StatusBadge status={w.status} /></p>
         </div>
         <div className="head-actions">
+          <Button data-testid="website-articles-top-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/articles`)}><FileText size={16} /> Artikel & promo</Button>
           <Button data-testid="sections-manager-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/sections`)}><LayoutTemplate size={16} /> Kelola section</Button>
           <Button data-testid="edit-manual-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/edit`)}>Edit manual</Button>
           <Button data-testid="publish-website-button" onClick={publish}>
@@ -621,7 +622,7 @@ export function WebsiteDetail() {
           <div className="suggestion-label">COBA PERINTAH INI</div>
           <div className="suggestions">
             <button data-testid="ai-suggestion-elegant" onClick={() => setCommand("Buat website saya lebih elegan")}>Buat lebih elegan</button>
-            <button data-testid="ai-suggestion-green" onClick={() => setCommand("Gunakan warna hijau dan cream")}>Warna hijau & cream</button>
+            <button data-testid="ai-suggestion-blue" onClick={() => setCommand("Gunakan warna hijau dan cream")}>Warna hijau & cream</button>
             <button data-testid="ai-suggestion-headline" onClick={() => setCommand("Buat headline lebih menarik")}>Headline lebih menarik</button>
             <button data-testid="ai-suggestion-modern" onClick={() => setCommand("Buat lebih modern dan minimalis")}>Modern & minimalis</button>
           </div>
@@ -634,6 +635,7 @@ export function WebsiteDetail() {
           )}
           <div className="detail-links">
             <Link data-testid="manual-edit-link" to={`/dashboard/websites/${id}/edit`}>Edit informasi & produk <ArrowRight size={15} /></Link>
+            <Link data-testid="website-articles-link" to={`/dashboard/websites/${id}/articles`}><FileText size={15} />Artikel & promo <ArrowRight size={15} /></Link>
             <Link data-testid="subscription-link" to="/dashboard/subscription">Kelola paket <ArrowRight size={15} /></Link>
             {!isFreePlan && <button data-testid="delete-website-button" className="danger-link" onClick={removeSite}><Trash2 size={14} />Hapus website</button>}
             {isFreePlan && <span className="text-xs text-slate-500">Website Gratis tidak dapat dihapus.</span>}

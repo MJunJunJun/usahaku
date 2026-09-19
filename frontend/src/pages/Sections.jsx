@@ -264,10 +264,10 @@ const Field = ({ label, children }) => (
 );
 
 const inputCls =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50 disabled:text-slate-400";
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-50 disabled:text-slate-400";
 
 const contentCls = "bg-white border border-slate-200 shadow-xl rounded-xl";
-const itemCls = "focus:bg-emerald-50";
+const itemCls = "focus:bg-sky-50";
 
 function IconSelect({ value, onChange, disabled }) {
   return (
@@ -281,7 +281,7 @@ function IconSelect({ value, onChange, disabled }) {
           return (
             <SelectItem key={ic} value={ic} className={itemCls}>
               <span className="flex items-center gap-2">
-                <Icon size={14} className="text-emerald-600" />
+                <Icon size={14} className="text-sky-600" />
                 <span className="text-xs">{ic}</span>
               </span>
             </SelectItem>
@@ -309,7 +309,7 @@ function SectionCard({ icon: Icon, tint, title, subtitle, visible = true, onTogg
           {presetControl}
           {toggleable && (
             <label className="flex cursor-pointer items-center gap-2">
-              <span className={`text-xs font-semibold ${visible ? "text-emerald-600" : "text-slate-400"}`}>
+              <span className={`text-xs font-semibold ${visible ? "text-sky-600" : "text-slate-400"}`}>
                 {visible ? "Tampil" : "Disembunyikan"}
               </span>
               <Switch checked={visible} onCheckedChange={onToggle} />
@@ -328,10 +328,10 @@ function SectionPresetSelect({ site, section, onApply }) {
   const label = section === "contact" ? "Contoh kontak & lokasi" : `Contoh ${base.label}`;
   return (
     <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-      <LayoutTemplate size={14} className="text-emerald-600" />
+      <LayoutTemplate size={14} className="text-sky-600" />
       <select
         data-testid={`section-${section}-template-select`}
-        className="max-w-[205px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-emerald-500"
+        className="max-w-[205px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
         defaultValue=""
         onChange={(e) => {
           if (!e.target.value) return;
@@ -350,10 +350,10 @@ function CoverTemplateSelect({ site, onApply }) {
   const options = getContentTemplates(site.category);
   return (
     <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-      <LayoutTemplate size={14} className="text-emerald-600" />
+      <LayoutTemplate size={14} className="text-sky-600" />
       <select
         data-testid="section-cover-template-select"
-        className="max-w-[225px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-emerald-500"
+        className="max-w-[225px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
         defaultValue=""
         onChange={(e) => {
           if (!e.target.value) return;
@@ -372,7 +372,7 @@ function CoverTemplateSelect({ site, onApply }) {
 }
 
 const addItemBtnCls =
-  "flex w-full items-center justify-center gap-1.5 py-3 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40";
+  "flex w-full items-center justify-center gap-1.5 py-3 text-xs font-semibold text-sky-600 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40";
 
 export function SectionForm({ site = {}, cfg, set, onCoverTemplateApply }) {
   const [openFaq, setOpenFaq] = useState(0);
@@ -380,13 +380,13 @@ export function SectionForm({ site = {}, cfg, set, onCoverTemplateApply }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800">
-        <EyeOff size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+      <div className="flex items-start gap-2.5 rounded-xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-800">
+        <EyeOff size={16} className="mt-0.5 shrink-0 text-sky-600" />
         <span>Section yang dimatikan <b>(OFF)</b> tidak akan muncul di halaman utama website.</span>
       </div>
 
       {/* SECTION 1: COVER WEBSITE */}
-      <SectionCard testid="section-cover" icon={PanelsTopLeft} tint="bg-emerald-50 text-emerald-600"
+      <SectionCard testid="section-cover" icon={PanelsTopLeft} tint="bg-sky-50 text-sky-600"
         title="Section 1 · Cover Website" subtitle="Judul utama, subjudul, dan cerita singkat tentang bisnis"
         presetControl={<CoverTemplateSelect site={site} onApply={(template) => {
           if (onCoverTemplateApply) onCoverTemplateApply(template);
@@ -423,7 +423,7 @@ export function SectionForm({ site = {}, cfg, set, onCoverTemplateApply }) {
             return (
               <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-sky-600 shadow-sm">
                     <Preview size={16} />
                   </span>
                   <span className="text-xs font-semibold text-slate-500">Card {i + 1}</span>
@@ -563,16 +563,16 @@ export function SectionForm({ site = {}, cfg, set, onCoverTemplateApply }) {
       </SectionCard>
 
       {/* SECTION 5: KONTAK & LOKASI */}
-      <SectionCard testid="section-contact" icon={MapPinned} tint="bg-emerald-50 text-emerald-600"
+      <SectionCard testid="section-contact" icon={MapPinned} tint="bg-sky-50 text-sky-600"
         title="Section 5 · Kontak & Lokasi" subtitle="3 kartu kontak — tiap kartu bisa dinyalakan/dimatikan sendiri"
         visible={cfg.contactVisible} onToggle={(v) => set({ contactVisible: v })}
         presetControl={<SectionPresetSelect site={site} section="contact" onApply={set} />}>
         <div className="grid gap-4 p-5 md:grid-cols-3">
           {/* Card 1: Alamat + Maps */}
-          <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.address ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 bg-slate-50/60"}`}>
+          <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.address ? "border-sky-200 bg-sky-50/30" : "border-slate-200 bg-slate-50/60"}`}>
             <div className="mb-3 flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
-                <MapPin size={16} className="text-emerald-600" />
+                <MapPin size={16} className="text-sky-600" />
                 <b className="text-sm text-slate-800">Alamat & Maps</b>
               </div>
               <Switch data-testid="contact-card-address-switch" checked={cfg.contactCards.address} onCheckedChange={(v) => setCard("address", v)} />
@@ -585,10 +585,10 @@ export function SectionForm({ site = {}, cfg, set, onCoverTemplateApply }) {
           </div>
 
           {/* Card 2: Jam Operasional */}
-          <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.hours ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 bg-slate-50/60"}`}>
+          <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.hours ? "border-sky-200 bg-sky-50/30" : "border-slate-200 bg-slate-50/60"}`}>
             <div className="mb-3 flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Clock size={16} className="text-emerald-600" />
+                <Clock size={16} className="text-sky-600" />
                 <b className="text-sm text-slate-800">Jam Operasional</b>
               </div>
               <Switch data-testid="contact-card-hours-switch" checked={cfg.contactCards.hours} onCheckedChange={(v) => setCard("hours", v)} />
@@ -600,10 +600,10 @@ export function SectionForm({ site = {}, cfg, set, onCoverTemplateApply }) {
           </div>
 
           {/* Card 3: Media Sosial + WA */}
-          <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.social ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 bg-slate-50/60"}`}>
+          <div className={`flex flex-col rounded-xl border p-4 ${cfg.contactVisible && cfg.contactCards.social ? "border-sky-200 bg-sky-50/30" : "border-slate-200 bg-slate-50/60"}`}>
             <div className="mb-3 flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Phone size={16} className="text-emerald-600" />
+                <Phone size={16} className="text-sky-600" />
                 <b className="text-sm text-slate-800">Media Sosial & WA</b>
               </div>
               <Switch data-testid="contact-card-social-switch" checked={cfg.contactCards.social} onCheckedChange={(v) => setCard("social", v)} />
@@ -679,7 +679,7 @@ export function SectionManager() {
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-6 py-4">
           <div>
-            <Link data-testid="sections-back" to={`/dashboard/websites/${id}`} className="mb-0.5 inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-emerald-600">
+            <Link data-testid="sections-back" to={`/dashboard/websites/${id}`} className="mb-0.5 inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-sky-600">
               ← Kembali ke website
             </Link>
             <h1 data-testid="sections-title" className="text-xl font-bold tracking-tight text-slate-900">Kelola Section Website</h1>
@@ -696,7 +696,7 @@ export function SectionManager() {
         <FormError msg={err} />
         <div className="sticky bottom-4 z-10 mt-6 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-5 py-3.5 shadow-lg backdrop-blur">
           <span className="flex items-center gap-2 text-xs text-slate-500">
-            <LayoutTemplate size={15} className="text-emerald-600" />
+            <LayoutTemplate size={15} className="text-sky-600" />
             Perubahan tampil setelah tombol simpan ditekan.
           </span>
           <Button data-testid="sections-save-footer-button" onClick={save} disabled={saving} className="rounded-xl px-5">

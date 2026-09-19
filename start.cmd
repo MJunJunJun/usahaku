@@ -1,9 +1,9 @@
 @echo off
-title UsahaKu - Start System
+title Situska - Start System
 cd /d "%~dp0"
 
 echo ============================================
-echo    UsahaKu - Menjalankan Sistem
+echo    Situska - Menjalankan Sistem
 echo ============================================
 
 REM ---------- 1. CEK MONGODB ----------
@@ -22,12 +22,16 @@ if %errorlevel%==0 (
 )
 
 REM ---------- 2. BACKEND (port 8000) ----------
+set "BUILDZA_PYTHON=backend\.venv\Scripts\python.exe"
+REM Compatibility for the existing local workspace where the usable virtual
+REM environment still lives in the previous project folder.
+if not exist "%BUILDZA_PYTHON%" set "BUILDZA_PYTHON=Usahaku\backend\.venv\Scripts\python.exe"
 netstat -aon | findstr ":8000" | findstr "LISTENING" >nul 2>&1
 if %errorlevel%==0 (
     echo [OK] Backend sudah jalan di port 8000
 ) else (
     echo [..] Menjalankan backend di port 8000...
-    start "UsahaKu Backend" /min cmd /c "pushd backend && .venv\Scripts\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000 > ..\backend.log 2>&1"
+    start "Situska Backend" /min cmd /c "pushd backend && ..\%BUILDZA_PYTHON% -m uvicorn server:app --host 0.0.0.0 --port 8000 > ..\backend.log 2>&1"
     timeout /t 6 /nobreak >nul
     netstat -aon | findstr ":8000" | findstr "LISTENING" >nul 2>&1
     if %errorlevel%==0 (
@@ -43,7 +47,7 @@ if %errorlevel%==0 (
     echo [OK] Frontend sudah jalan di port 3000
 ) else (
     echo [..] Menjalankan frontend di port 3000...
-    start "UsahaKu Frontend" /min cmd /c "pushd frontend && call npm.cmd start > ..\frontend.log 2>&1"
+    start "Situska Frontend" /min cmd /c "pushd frontend && call npm.cmd start > ..\frontend.log 2>&1"
     echo [OK] Frontend sedang kompilasi +- 40 detik
     echo     Browser akan terbuka otomatis di http://localhost:3000
 )
@@ -75,7 +79,7 @@ if %errorlevel%==0 (
     goto gowa_done
 )
 echo [..] Menjalankan GoWA native (tanpa Docker)...
-start "UsahaKu GoWA" /min cmd /c "pushd tools\gowa && gowa.exe rest --port=3001 --basic-auth=%GOWA_USER%:%GOWA_PASS% --webhook=http://localhost:8000/api/wa/webhook?secret=usahaku_wa_secret_2026 --webhook-secret=usahaku_wa_secret_2026 --os=UsahaKu --account-validation=false > ..\..\gowa.log 2>&1"
+start "Situska GoWA" /min cmd /c "pushd tools\gowa && gowa.exe rest --port=3001 --basic-auth=%GOWA_USER%:%GOWA_PASS% --webhook=http://localhost:8000/api/wa/webhook?secret=usahaku_wa_secret_2026 --webhook-secret=usahaku_wa_secret_2026 --os=Situska --account-validation=false > ..\..\gowa.log 2>&1"
 timeout /t 4 /nobreak >nul
 netstat -aon | findstr ":3001" | findstr "LISTENING" >nul 2>&1
 if %errorlevel%==0 (
