@@ -20,9 +20,9 @@ export function SeoHead({ title, description, image, type = "website", schema, c
       const selector = `meta[${isTwitter ? "name" : "property"}="${property}"]`;
       setTag(selector, { [isTwitter ? "name" : "property"]: property, content });
     });
-    let canonical = document.head.querySelector('link[rel="canonical"]');
-    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
-    canonical.href = canonicalUrl;
+    let canonicalTag = document.head.querySelector('link[rel="canonical"]');
+    if (!canonicalTag) { canonicalTag = document.createElement("link"); canonicalTag.rel = "canonical"; document.head.appendChild(canonicalTag); }
+    canonicalTag.href = canonicalUrl;
     let jsonLd = document.head.querySelector('script[data-buildza-schema]');
     if (!jsonLd) { jsonLd = document.createElement("script"); jsonLd.type = "application/ld+json"; jsonLd.dataset.buildzaSchema = "true"; document.head.appendChild(jsonLd); }
     jsonLd.text = schema ? JSON.stringify(schema) : "";
