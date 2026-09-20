@@ -14,6 +14,12 @@ if not base_url:
 BASE_URL = base_url.rstrip("/")
 API = BASE_URL + "/api"
 
+def add_csrf_header(session):
+    """Mirror the browser client's double-submit CSRF behaviour."""
+    token = session.cookies.get("csrf_token")
+    if token:
+        session.headers["X-CSRF-Token"] = token
+
 
 def creds():
     p = Path("/app/memory/test_credentials.md")
@@ -34,6 +40,7 @@ def admin_client(admin_credentials):
     r = s.post(f"{API}/auth/login", json=admin_credentials, timeout=30)
     if r.status_code != 200:
         pytest.fail(f"Admin login failed {r.status_code}: {r.text[:300]}")
+    add_csrf_header(s)
     return s
 
 
@@ -43,6 +50,7 @@ def new_user(session=None):
     r = s.post(f"{API}/auth/register", json={"name": "TEST User", "email": email, "password": "TestPass123!"}, timeout=30)
     if r.status_code != 200:
         pytest.fail(f"Register failed {r.status_code}: {r.text[:300]}")
+    add_csrf_header(s)
     return s, r.json(), email
 
 

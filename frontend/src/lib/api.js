@@ -26,6 +26,17 @@ export const resolveMediaUrl = (url) => {
 };
 export const api = axios.create({ baseURL: API, withCredentials: true });
 
+// The auth cookie is HttpOnly; the separate CSRF cookie is intentionally
+// readable so this same-origin client can prove a state-changing request was
+// initiated by this application.
+api.interceptors.request.use((config) => {
+  if (typeof document !== "undefined") {
+    const csrf = document.cookie.split("; ").find((item) => item.startsWith("csrf_token="))?.split("=")[1];
+    if (csrf) config.headers["X-CSRF-Token"] = decodeURIComponent(csrf);
+  }
+  return config;
+});
+
 export const money = (n) => new Intl.NumberFormat("id-ID").format(Number(n || 0));
 
 export const errorText = (e) => {

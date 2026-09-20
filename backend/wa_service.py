@@ -10,8 +10,8 @@ Aturan penting:
 
 Konfigurasi via backend/.env:
   GOWA_BASE_URL=http://localhost:3000
-  GOWA_USER=admin
-  GOWA_PASS=admin123
+  GOWA_USER=<username-unik>
+  GOWA_PASS=<password-unik>
   ADMIN_WA_NUMBER=628xxxxxxxxxx
   WHATSAPP_WEBHOOK_SECRET=rahasia_webhook
 """
@@ -30,8 +30,8 @@ import asyncio
 log = logging.getLogger("usahaku.wa")
 
 GOWA_BASE_URL = os.environ.get("GOWA_BASE_URL", "http://localhost:3000").rstrip("/")
-GOWA_USER = os.environ.get("GOWA_USER", "admin")
-GOWA_PASS = os.environ.get("GOWA_PASS", "admin123")
+GOWA_USER = os.environ.get("GOWA_USER", "").strip()
+GOWA_PASS = os.environ.get("GOWA_PASS", "")
 ADMIN_WA_NUMBER = os.environ.get("ADMIN_WA_NUMBER", "")
 WHATSAPP_WEBHOOK_SECRET = os.environ.get("WHATSAPP_WEBHOOK_SECRET", "")
 GOWA_DEVICE_ID = os.environ.get("GOWA_DEVICE_ID", "usahaku")
@@ -293,10 +293,9 @@ async def download_media(message_id: str):
 # ------------------------------------------------------------------
 
 def verify_webhook_signature(raw_body: bytes, header_value: str) -> bool:
-    """Validasi X-Hub-Signature-256 (= sha256=<hex>) bila secret diset.
-    Bila header tidak ada / secret kosong -> True (mode toleran)."""
+    """Validate X-Hub-Signature-256 (= sha256=<hex>) and fail closed."""
     if not WHATSAPP_WEBHOOK_SECRET:
-        return True
+        return False
     if not header_value:
         return False
     expected = "sha256=" + hmac.new(
@@ -308,7 +307,7 @@ def verify_webhook_signature(raw_body: bytes, header_value: str) -> bool:
 def verify_webhook_secret_param(secret_param: str) -> bool:
     """Alternatif validasi via query ?secret=..."""
     if not WHATSAPP_WEBHOOK_SECRET:
-        return True
+        return False
     return hmac.compare_digest(WHATSAPP_WEBHOOK_SECRET, secret_param or "")
 
 

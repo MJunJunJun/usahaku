@@ -1,4 +1,8 @@
 node_modules
+.env
+.env.*
+*.log
+*.err
 build
 npm-debug.log
 yarn-error.log

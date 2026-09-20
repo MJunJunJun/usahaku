@@ -6,6 +6,14 @@ echo ============================================
 echo    Situska - Menjalankan Sistem
 echo ============================================
 
+REM Pasang sekali aturan firewall GoWA. Bila belum ada, skrip akan meminta
+REM persetujuan UAC; jika dibatalkan, GoWA tetap aman karena hanya bind loopback.
+powershell.exe -NoProfile -Command "if (Get-NetFirewallRule -DisplayName 'Situska - Block public GoWA' -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+    echo [..] Memasang perlindungan firewall GoWA (butuh persetujuan Windows sekali)...
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\block-public-gowa.ps1"
+)
+
 REM ---------- 1. CEK MONGODB ----------
 sc query MongoDB | findstr "RUNNING" >nul 2>&1
 if %errorlevel%==0 (
@@ -31,7 +39,7 @@ if %errorlevel%==0 (
     echo [OK] Backend sudah jalan di port 8000
 ) else (
     echo [..] Menjalankan backend di port 8000...
-    start "Situska Backend" /min cmd /c "pushd backend && ..\%BUILDZA_PYTHON% -m uvicorn server:app --host 0.0.0.0 --port 8000 > ..\backend.log 2>&1"
+    start "Situska Backend" /min cmd /c "pushd backend && ..\%BUILDZA_PYTHON% -m uvicorn server:app --host 127.0.0.1 --port 8000 > ..\backend.log 2>&1"
     timeout /t 6 /nobreak >nul
     netstat -aon | findstr ":8000" | findstr "LISTENING" >nul 2>&1
     if %errorlevel%==0 (
@@ -54,12 +62,14 @@ if %errorlevel%==0 (
 
 REM ---------- 4. WHATSAPP GATEWAY / GoWA ----------
 REM Baca kredensial GoWA dari backend\.env (sumber tunggal)
-set "GOWA_USER=admin"
-set "GOWA_PASS=admin123"
+set "GOWA_USER="
+set "GOWA_PASS="
+set "WHATSAPP_WEBHOOK_SECRET="
 if exist "backend\.env" (
     for /f "usebackq tokens=1,* delims==" %%a in ("backend\.env") do (
         if /I "%%a"=="GOWA_USER" set "GOWA_USER=%%b"
         if /I "%%a"=="GOWA_PASS" set "GOWA_PASS=%%b"
+        if /I "%%a"=="WHATSAPP_WEBHOOK_SECRET" set "WHATSAPP_WEBHOOK_SECRET=%%b"
     )
 )
 set "GOWA_MODE="
@@ -73,13 +83,25 @@ if "%GOWA_MODE%"=="" goto gowa_none
 if "%GOWA_MODE%"=="docker" goto gowa_docker
 
 :gowa_native
+if not defined GOWA_USER (
+    echo [X] GOWA_USER belum diatur di backend\.env. GoWA tidak dijalankan.
+    goto gowa_done
+)
+if not defined GOWA_PASS (
+    echo [X] GOWA_PASS belum diatur di backend\.env. GoWA tidak dijalankan.
+    goto gowa_done
+)
+if not defined WHATSAPP_WEBHOOK_SECRET (
+    echo [X] WHATSAPP_WEBHOOK_SECRET belum diatur di backend\.env. GoWA tidak dijalankan.
+    goto gowa_done
+)
 netstat -aon | findstr ":3001" | findstr "LISTENING" >nul 2>&1
 if %errorlevel%==0 (
     echo [OK] GoWA native sudah jalan di port 3001
     goto gowa_done
 )
 echo [..] Menjalankan GoWA native (tanpa Docker)...
-start "Situska GoWA" /min cmd /c "pushd tools\gowa && gowa.exe rest --port=3001 --basic-auth=%GOWA_USER%:%GOWA_PASS% --webhook=http://localhost:8000/api/wa/webhook?secret=usahaku_wa_secret_2026 --webhook-secret=usahaku_wa_secret_2026 --os=Situska --account-validation=false > ..\..\gowa.log 2>&1"
+start "Situska GoWA" /min cmd /c "pushd tools\gowa && gowa.exe rest --host=127.0.0.1 --port=3001 --basic-auth=%GOWA_USER%:%GOWA_PASS% --webhook=http://127.0.0.1:8000/api/wa/webhook --webhook-secret=%WHATSAPP_WEBHOOK_SECRET% --ui-enabled=false --mcp-enabled=false --os=Situska --account-validation=false > ..\..\gowa.log 2>&1"
 timeout /t 4 /nobreak >nul
 netstat -aon | findstr ":3001" | findstr "LISTENING" >nul 2>&1
 if %errorlevel%==0 (

@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr
@@ -68,6 +68,8 @@ _redis_rate_client = None
 RATE_LIMIT_REDIS_URL = (os.environ.get("RATE_LIMIT_REDIS_URL") or "").strip()
 REQUIRE_DISTRIBUTED_RATE_LIMIT = (os.environ.get("REQUIRE_DISTRIBUTED_RATE_LIMIT") or "false").lower() == "true"
 ADMIN_TOTP_SECRET = (os.environ.get("ADMIN_TOTP_SECRET") or "").strip()
+REQUIRE_ADMIN_MFA = (os.environ.get("REQUIRE_ADMIN_MFA") or "false").lower() == "true"
+MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 def load_jwt_secret():
     """Use the configured secret, or persist a local-development secret.
@@ -106,11 +108,19 @@ def request_is_secure(request: Request):
     return request.url.scheme == "https" or forwarded_proto == "https"
 
 def set_auth_cookie(response: Response, request: Request, value: str):
+    secure = request_is_secure(request)
     response.set_cookie(
         "access_token", value,
         httponly=True, samesite=COOKIE_SAMESITE,
-        max_age=AUTH_COOKIE_DAYS * 86400, secure=request_is_secure(request),
+        max_age=AUTH_COOKIE_DAYS * 86400, secure=secure,
         domain=COOKIE_DOMAIN, path="/",
+    )
+    # Double-submit token: readable by the same-origin SPA but never accepted
+    # unless it also matches the cookie sent with a state-changing request.
+    response.set_cookie(
+        "csrf_token", secrets.token_urlsafe(32), httponly=False,
+        samesite=COOKIE_SAMESITE, max_age=AUTH_COOKIE_DAYS * 86400,
+        secure=secure, domain=COOKIE_DOMAIN, path="/",
     )
 
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
@@ -173,7 +183,12 @@ def public(doc):
     if not doc: return None
     return {k: v for k, v in doc.items() if k not in ("_id", "password_hash")}
 def hash_password(value): return bcrypt.hashpw(value.encode(), bcrypt.gensalt()).decode()
-def verify_password(value, hashed): return bcrypt.checkpw(value.encode(), hashed.encode())
+def verify_password(value, hashed):
+    try:
+        return bcrypt.checkpw(value.encode(), hashed.encode())
+    except (ValueError, TypeError, AttributeError):
+        # A malformed legacy record must not turn a login attempt into a 500.
+        return False
 def token(user_id, kind="access", days=7, session_version=0):
     return jwt.encode({"sub": user_id, "type": kind, "sv": session_version, "exp": datetime.now(timezone.utc) + timedelta(days=days)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -477,8 +492,15 @@ def init_storage():
 
 @api.post("/uploads")
 async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
-    data = await file.read()
-    if len(data) > 8 * 1024 * 1024:
+    # Read in bounded chunks.  Checking only after ``read()`` lets an
+    # authenticated attacker allocate an arbitrarily large request in memory.
+    data = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        data.extend(chunk)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, "Ukuran file maksimal 8MB")
+    data = bytes(data)
+    if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(400, "Ukuran file maksimal 8MB")
     detected_type = upload_type_from_bytes(data)
     if not detected_type or detected_type[0] not in {"image/jpeg", "image/png", "image/webp"} or file.content_type != detected_type[0]:
@@ -665,6 +687,10 @@ async def logout(response: Response, request: Request, user=Depends(current_user
     await db.users.update_one({"id": user["id"]}, {"$inc": {"sessionVersion": 1}})
     response.delete_cookie(
         "access_token", path="/", domain=COOKIE_DOMAIN,
+        secure=request_is_secure(request), samesite=COOKIE_SAMESITE,
+    )
+    response.delete_cookie(
+        "csrf_token", path="/", domain=COOKIE_DOMAIN,
         secure=request_is_secure(request), samesite=COOKIE_SAMESITE,
     )
     return {"ok": True}
@@ -2200,12 +2226,11 @@ async def wa_webhook(request: Request):
     Idempotent: gowa_message_id unik, pesan sama tidak tersimpan dobel."""
     raw = await request.body()
 
-    # Validasi signature X-Hub-Signature-256 (toleran bila secret/header kosong)
+    # Webhook secret is mandatory; do not accept it in the URL because URLs
+    # commonly end up in server/proxy logs.
     sig = request.headers.get("X-Hub-Signature-256") or request.headers.get("X-Hub-Signature")
     if not wa_service.verify_webhook_signature(raw, sig):
-        q = request.query_params.get("secret", "")
-        if not wa_service.verify_webhook_secret_param(q):
-            raise HTTPException(401, "Signature webhook tidak valid")
+        raise HTTPException(401, "Signature webhook tidak valid")
 
     try:
         payload = json.loads(raw.decode("utf-8"))
@@ -2414,8 +2439,28 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_origin_regex=cors_origin_regex,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-CSRF-Token"],
 )
+
+_CSRF_EXEMPT_PATHS = {
+    "/api/auth/register", "/api/auth/login", "/api/auth/send-wa-code",
+    "/api/auth/verify-wa", "/api/auth/forgot-password",
+    "/api/auth/reset-password", "/api/auth/check-wa", "/api/wa/webhook",
+    "/api/public/",
+}
+
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    """Require a same-origin CSRF token for authenticated state changes."""
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        path = request.url.path
+        exempt = path in _CSRF_EXEMPT_PATHS or path.startswith("/api/public/")
+        if not exempt:
+            cookie_token = request.cookies.get("csrf_token", "")
+            header_token = request.headers.get("X-CSRF-Token", "")
+            if not cookie_token or not header_token or not _hmac.compare_digest(cookie_token, header_token):
+                return JSONResponse(status_code=403, content={"detail": "Token CSRF tidak valid."})
+    return await call_next(request)
 
 @app.on_event("startup")
 async def startup():
@@ -2485,6 +2530,8 @@ async def startup():
 
     admin_email = (os.environ.get("ADMIN_EMAIL") or "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD") or ""
+    if REQUIRE_ADMIN_MFA and not ADMIN_TOTP_SECRET:
+        raise RuntimeError("ADMIN_TOTP_SECRET wajib diatur saat REQUIRE_ADMIN_MFA=true.")
     if bool(admin_email) != bool(admin_password):
         raise RuntimeError("ADMIN_EMAIL dan ADMIN_PASSWORD harus diatur bersama-sama.")
     if admin_email and len(admin_password) < 12:
