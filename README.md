@@ -20,9 +20,18 @@ Catatan:
 - Service backend dan GoWA berjalan di jaringan internal Docker (tidak dibuka ke host).
 - Alur WhatsApp: frontend -> backend (`/api/admin/wa/*`) -> GoWA (`http://gowa:3000`) internal antar-container.
 
-### Akun admin default
-- Email: `admin@usahaku.id`
-- Password: `admin123`
+### Konfigurasi keamanan produksi
+
+Jangan gunakan akun atau secret bawaan. Sebelum menjalankan Docker Compose,
+buat `.env` di server dan isi `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD`,
+`MONGO_URL` (dengan kredensial yang sudah di-URL-encode), `JWT_SECRET`,
+`GOWA_USER`, `GOWA_PASS`, dan `WHATSAPP_WEBHOOK_SECRET` dengan nilai unik
+berentropi tinggi. `ADMIN_EMAIL` dan `ADMIN_PASSWORD` bersifat opsional dan
+hanya dipakai untuk bootstrap administrator pertama.
+
+Publikasikan hanya reverse proxy/CDN yang menangani HTTPS ke
+`127.0.0.1:3000`; jangan mengubah `FRONTEND_BIND_ADDRESS` menjadi `0.0.0.0`
+tanpa firewall. Aktifkan redirect HTTPS dan HSTS pada proxy/CDN tersebut.
 
 ### Hentikan layanan
 ```bash

@@ -293,8 +293,8 @@ export function PaymentFlow() {
             {finalAmount > 0 && <label>Tanggal transfer<input data-testid="transfer-date-input" type="date" value={transferDate} onChange={e => setTransferDate(e.target.value)} /></label>}
             <label className="full upload-label">{finalAmount === 0 ? "Bukti pembayaran (opsional)" : "Bukti transfer"}
               <div className="upload-box upload-box-large">
-                {proofPreview ? <img src={proofPreview} alt="bukti" /> : proofUrl ? <span>File terupload ✓</span> : <><Upload size={20} /><span>Upload gambar / PDF (max 8MB)</span></>}
-                <input type="file" accept="image/*,application/pdf" onChange={uploadProof} data-testid="proof-input" />
+                {proofPreview ? <img src={proofPreview} alt="bukti" /> : proofUrl ? <span>Gambar terunggah ✓</span> : <><Upload size={20} /><span>Upload gambar JPG, PNG, atau WebP (maks. 8MB)</span></>}
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadProof} data-testid="proof-input" />
               </div>
             </label>
             <label className="full">Catatan (opsional)<textarea data-testid="payment-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Tambahkan catatan untuk admin (opsional)" /></label>

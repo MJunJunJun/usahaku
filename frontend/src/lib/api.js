@@ -57,6 +57,9 @@ export const formatDateTime = (iso) => {
 };
 
 export const uploadFile = async (file) => {
+  if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("Hanya gambar JPG, PNG, atau WebP yang dapat diunggah.");
+  }
   const fd = new FormData();
   fd.append("file", file);
   const r = await api.post("/uploads", fd, { headers: { "Content-Type": "multipart/form-data" } });

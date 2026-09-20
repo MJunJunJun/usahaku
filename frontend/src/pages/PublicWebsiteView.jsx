@@ -791,7 +791,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
               Rp{money(currentProduct.price)}
             </div>
             <div className="product-popup-desc">
-              <p dangerouslySetInnerHTML={{ __html: currentProduct.description }} />
+              <p>{currentProduct.description}</p>
             </div>
           </div>
           <div className="product-popup-footer">

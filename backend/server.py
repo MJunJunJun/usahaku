@@ -9,8 +9,17 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
-import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio
+import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio, hashlib, time
+from collections import defaultdict, deque
 import hmac as _hmac
+try:
+    import redis.asyncio as redis
+except ImportError:
+    redis = None
+try:
+    import pyotp
+except ImportError:
+    pyotp = None
 from platform_article_catalog import PLATFORM_ARTICLES
 
 import wa_service
@@ -54,6 +63,11 @@ TRIAL_DAYS = 30
 AUTH_COOKIE_DAYS = int(os.environ.get("AUTH_COOKIE_DAYS", "30"))
 ADDITIONAL_WEBSITE_PRICE = 25000
 storage_key = None
+_rate_limit_events = defaultdict(deque)
+_redis_rate_client = None
+RATE_LIMIT_REDIS_URL = (os.environ.get("RATE_LIMIT_REDIS_URL") or "").strip()
+REQUIRE_DISTRIBUTED_RATE_LIMIT = (os.environ.get("REQUIRE_DISTRIBUTED_RATE_LIMIT") or "false").lower() == "true"
+ADMIN_TOTP_SECRET = (os.environ.get("ADMIN_TOTP_SECRET") or "").strip()
 
 def load_jwt_secret():
     """Use the configured secret, or persist a local-development secret.
@@ -160,8 +174,65 @@ def public(doc):
     return {k: v for k, v in doc.items() if k not in ("_id", "password_hash")}
 def hash_password(value): return bcrypt.hashpw(value.encode(), bcrypt.gensalt()).decode()
 def verify_password(value, hashed): return bcrypt.checkpw(value.encode(), hashed.encode())
-def token(user_id, kind="access", days=7):
-    return jwt.encode({"sub": user_id, "type": kind, "exp": datetime.now(timezone.utc) + timedelta(days=days)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+def token(user_id, kind="access", days=7, session_version=0):
+    return jwt.encode({"sub": user_id, "type": kind, "sv": session_version, "exp": datetime.now(timezone.utc) + timedelta(days=days)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def reset_token_hash(value: str) -> str:
+    """Store reset tokens as hashes so a database or log disclosure cannot use them."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+def validate_password(value: str):
+    if len(value) < 12 or value.lower() in {"passwordpassword", "123456789012", "qwertyuiop12"}:
+        raise HTTPException(400, "Password minimal 12 karakter dan tidak boleh mudah ditebak.")
+
+def upload_type_from_bytes(data: bytes):
+    """Return the permitted MIME type and extension only for recognised file signatures."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    return None
+
+def request_client_key(request: Request) -> str:
+    # The backend is private in Compose; the reverse proxy supplies this header.
+    forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    return forwarded or (request.client.host if request.client else "unknown")
+
+async def enforce_rate_limit(request: Request, scope: str, subject: str, limit: int, window_seconds: int):
+    """Use Redis in production; the in-memory fallback is development only."""
+    global _redis_rate_client
+    identity = f"{request_client_key(request)}:{subject.strip().lower()[:160]}"
+    key = f"rate:{scope}:{hashlib.sha256(identity.encode()).hexdigest()}"
+    if RATE_LIMIT_REDIS_URL and redis:
+        try:
+            if _redis_rate_client is None:
+                _redis_rate_client = redis.from_url(RATE_LIMIT_REDIS_URL, decode_responses=True)
+            count = await _redis_rate_client.incr(key)
+            if count == 1:
+                await _redis_rate_client.expire(key, window_seconds)
+            if count > limit:
+                retry_after = await _redis_rate_client.ttl(key)
+                raise HTTPException(429, "Terlalu banyak percobaan. Coba lagi nanti.", headers={"Retry-After": str(max(1, retry_after))})
+            return
+        except HTTPException:
+            raise
+        except Exception:
+            if REQUIRE_DISTRIBUTED_RATE_LIMIT:
+                raise HTTPException(503, "Layanan keamanan sementara tidak tersedia. Coba lagi nanti.")
+    elif REQUIRE_DISTRIBUTED_RATE_LIMIT:
+        raise HTTPException(503, "Layanan keamanan belum dikonfigurasi.")
+
+    key = f"{scope}:{identity}"
+    events = _rate_limit_events[key]
+    current = time.monotonic()
+    while events and current - events[0] >= window_seconds:
+        events.popleft()
+    if len(events) >= limit:
+        retry_after = max(1, int(window_seconds - (current - events[0])))
+        raise HTTPException(429, f"Terlalu banyak percobaan. Coba lagi dalam {retry_after} detik.", headers={"Retry-After": str(retry_after)})
+    events.append(current)
 
 def slugify(text):
     return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-") or "website"
@@ -177,6 +248,8 @@ async def current_user(request: Request):
     if not user: raise HTTPException(401, "Akun tidak ditemukan")
     if user.get("accountStatus") == "SUSPENDED":
         raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin Situska.")
+    if int(payload.get("sv", 0)) != int(user.get("sessionVersion", 0)):
+        raise HTTPException(401, "Sesi sudah dicabut. Silakan masuk lagi.")
     return user
 
 async def admin_user(user=Depends(current_user)):
@@ -219,6 +292,7 @@ async def log_activity(admin_id, action, target_user_id=None, target_resource_id
 class AuthInput(BaseModel):
     email: EmailStr
     password: str
+    mfaCode: str = ""
 
 class RegisterInput(AuthInput):
     name: str
@@ -403,13 +477,13 @@ def init_storage():
 
 @api.post("/uploads")
 async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
-    allowed = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
-    if file.content_type not in allowed:
-        raise HTTPException(400, "Format file harus JPG, PNG, WebP, atau PDF")
     data = await file.read()
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(400, "Ukuran file maksimal 8MB")
-    ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "bin").lower()
+    detected_type = upload_type_from_bytes(data)
+    if not detected_type or detected_type[0] not in {"image/jpeg", "image/png", "image/webp"} or file.content_type != detected_type[0]:
+        raise HTTPException(400, "Hanya gambar JPG, PNG, atau WebP yang diperbolehkan.")
+    content_type, ext = detected_type
     file_id = uid()
     local_file_path = UPLOAD_DIR / f"{file_id}.{ext}"
     with open(local_file_path, "wb") as f:
@@ -419,20 +493,35 @@ async def upload_file(file: UploadFile = File(...), user=Depends(current_user)):
     try:
         key = init_storage()
         if key:
-            r = requests.put(f"{STORAGE_URL}/objects/{cloud_path}", headers={"X-Storage-Key": key, "Content-Type": file.content_type}, data=data, timeout=15)
+            r = requests.put(f"{STORAGE_URL}/objects/{cloud_path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=15)
             if r.ok: cloud_path = r.json().get("path", cloud_path)
     except Exception:
         pass
 
     # Simpan nama file relatif agar database tetap valid saat pindah server/folder.
-    record = {"id": file_id, "userId": user["id"], "localPath": local_file_path.name, "storagePath": cloud_path, "contentType": file.content_type, "originalFilename": file.filename, "size": len(data), "createdAt": now()}
+    record = {"id": file_id, "userId": user["id"], "localPath": local_file_path.name, "storagePath": cloud_path, "contentType": content_type, "originalFilename": file.filename, "size": len(data), "createdAt": now()}
     await db.files.insert_one(record)
-    return {"id": record["id"], "url": f"/api/uploads/{record['id']}", "contentType": file.content_type}
+    return {"id": record["id"], "url": f"/api/uploads/{record['id']}", "contentType": content_type}
+
+async def upload_is_public(file_id: str) -> bool:
+    url = f"/api/uploads/{file_id}"
+    if await db.websites.find_one({"status": "PUBLISHED", "$or": [{"logoUrl": url}, {"coverImageUrl": url}]}, {"_id": 0, "id": 1}):
+        return True
+    product = await db.products.find_one({"images": url}, {"_id": 0, "websiteId": 1})
+    if product and await db.websites.find_one({"id": product["websiteId"], "status": "PUBLISHED"}, {"_id": 1}):
+        return True
+    if await db.articles.find_one({"coverImageUrl": url, "status": "PUBLISHED"}, {"_id": 1}):
+        return True
+    return bool(await db.platform_articles.find_one({"coverImageUrl": url, "status": "PUBLISHED"}, {"_id": 1}))
 
 @api.get("/uploads/{file_id}")
-async def download_file(file_id: str):
+async def download_file(file_id: str, request: Request):
     rec = await db.files.find_one({"id": file_id}, {"_id": 0})
     if not rec: raise HTTPException(404, "File tidak ditemukan")
+    if not await upload_is_public(file_id):
+        user = await current_user(request)
+        if user.get("role") != "ADMIN" and rec.get("userId") != user.get("id"):
+            raise HTTPException(403, "Anda tidak berhak mengakses file ini")
     stored_path = rec.get("localPath", "")
     local_path = Path(stored_path)
     if not local_path.is_absolute():
@@ -442,13 +531,15 @@ async def download_file(file_id: str):
         local_path = UPLOAD_DIR / local_path.name
     if stored_path and local_path.exists():
         with open(local_path, "rb") as f:
-            return Response(content=f.read(), media_type=rec["contentType"])
+            headers = {"X-Content-Type-Options": "nosniff"}
+            return Response(content=f.read(), media_type=rec["contentType"], headers=headers)
     try:
         key = init_storage()
         if key:
             r = requests.get(f"{STORAGE_URL}/objects/{rec['storagePath']}", headers={"X-Storage-Key": key}, timeout=15)
             r.raise_for_status()
-            return Response(content=r.content, media_type=rec["contentType"])
+            headers = {"X-Content-Type-Options": "nosniff"}
+            return Response(content=r.content, media_type=rec["contentType"], headers=headers)
     except Exception as exc:
         pass
     raise HTTPException(404, "File tidak tersedia")
@@ -488,7 +579,7 @@ async def showcase_logo(slug: str):
 async def register(data: RegisterInput, response: Response, request: Request):
     email = data.email.lower().strip()
     if await db.users.find_one({"email": email}): raise HTTPException(409, "Email sudah terdaftar")
-    if len(data.password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
+    validate_password(data.password)
     phone_raw = (data.whatsapp or data.phone or "").strip()
     phone = wa_service.normalize_number(phone_raw)
     if phone_raw and not phone:
@@ -511,14 +602,15 @@ async def register(data: RegisterInput, response: Response, request: Request):
     await notify(user["id"], "Selamat datang di Situska", "Buat website pertamamu untuk memulai masa Gratis 30 hari.")
     if phone:
         await db.wa_verifications.delete_one({"phone": phone})
-    set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS))
+    set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS, session_version=user.get("sessionVersion", 0)))
     return public(user)
 
 @api.post("/auth/send-wa-code")
-async def send_wa_code(data: WaSendInput):
+async def send_wa_code(data: WaSendInput, request: Request):
     phone = wa_service.normalize_number(data.phone)
     if not phone:
         raise HTTPException(400, "Nomor WhatsApp tidak valid")
+    await enforce_rate_limit(request, "wa-code", phone, limit=3, window_seconds=600)
     code = f"{secrets.randbelow(1000000):06d}"
     expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
     await db.wa_verifications.update_one(
@@ -538,10 +630,11 @@ async def send_wa_code(data: WaSendInput):
     return {"ok": True, "message": "Kode verifikasi terkirim ke WhatsApp Anda."}
 
 @api.post("/auth/verify-wa")
-async def verify_wa(data: WaVerifyInput):
+async def verify_wa(data: WaVerifyInput, request: Request):
     phone = wa_service.normalize_number(data.phone)
     if not phone:
         raise HTTPException(400, "Nomor WhatsApp tidak valid")
+    await enforce_rate_limit(request, "wa-verify", phone, limit=5, window_seconds=600)
     rec = await db.wa_verifications.find_one({"phone": phone}, {"_id": 0})
     if not rec or rec.get("code") != data.code.strip() or rec.get("expiresAt", "") < now():
         raise HTTPException(400, "Kode verifikasi tidak valid atau sudah kedaluwarsa")
@@ -554,17 +647,22 @@ async def verify_wa(data: WaVerifyInput):
 
 @api.post("/auth/login")
 async def login(data: AuthInput, response: Response, request: Request):
+    await enforce_rate_limit(request, "login", data.email, limit=5, window_seconds=900)
     user = await db.users.find_one({"email": data.email.lower().strip()})
     if not user or not verify_password(data.password, user.get("password_hash", "")):
         raise HTTPException(401, "Email atau password salah")
     if user.get("accountStatus") == "SUSPENDED":
         raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin Situska.")
+    if user.get("role") == "ADMIN" and ADMIN_TOTP_SECRET:
+        if not pyotp or not pyotp.TOTP(ADMIN_TOTP_SECRET).verify(data.mfaCode.strip(), valid_window=1):
+            raise HTTPException(401, "Kode autentikasi dua faktor tidak valid.")
     await refresh_status(user)
-    set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS))
+    set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS, session_version=user.get("sessionVersion", 0)))
     return public(user)
 
 @api.post("/auth/logout")
-async def logout(response: Response, request: Request):
+async def logout(response: Response, request: Request, user=Depends(current_user)):
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"sessionVersion": 1}})
     response.delete_cookie(
         "access_token", path="/", domain=COOKIE_DOMAIN,
         secure=request_is_secure(request), samesite=COOKIE_SAMESITE,
@@ -576,22 +674,26 @@ async def me(user=Depends(current_user)):
     return public(await refresh_status(user))
 
 @api.post("/auth/forgot-password")
-async def forgot(data: ForgotInput):
+async def forgot(data: ForgotInput, request: Request):
+    await enforce_rate_limit(request, "forgot-password", data.email, limit=3, window_seconds=900)
     user = await db.users.find_one({"email": data.email.lower().strip()})
     if user:
         raw = secrets.token_urlsafe(32)
-        await db.password_reset_tokens.insert_one({"token": raw, "userId": user["id"], "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "used": False, "createdAt": now()})
-        log.info("Password reset token for %s: %s", user["email"], raw)
-    return {"message": "Jika email terdaftar, instruksi reset sudah dibuat.", "hint": "Cek email atau hubungi admin untuk mendapatkan link reset."}
+        await db.password_reset_tokens.insert_one({"tokenHash": reset_token_hash(raw), "userId": user["id"], "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "used": False, "createdAt": now()})
+        # Do not log or return `raw`: a reset token is equivalent to a password.
+        # Integrate the delivery provider here before enabling self-service reset.
+        log.info("Password reset requested for user_id=%s", user["id"])
+    return {"message": "Jika email terdaftar, permintaan reset sudah dicatat.", "hint": "Hubungi admin untuk mendapatkan tautan reset yang aman."}
 
 @api.post("/auth/reset-password")
 async def reset(data: ResetInput):
-    rec = await db.password_reset_tokens.find_one({"token": data.token, "used": False})
+    token_hash = reset_token_hash(data.token)
+    rec = await db.password_reset_tokens.find_one({"tokenHash": token_hash, "used": False})
     if not rec or rec.get("expiresAt", "") < now():
         raise HTTPException(400, "Token reset tidak berlaku atau sudah kedaluwarsa.")
-    if len(data.password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
-    await db.users.update_one({"id": rec["userId"]}, {"$set": {"password_hash": hash_password(data.password)}})
-    await db.password_reset_tokens.update_one({"token": data.token}, {"$set": {"used": True, "usedAt": now()}})
+    validate_password(data.password)
+    await db.users.update_one({"id": rec["userId"]}, {"$set": {"password_hash": hash_password(data.password)}, "$inc": {"sessionVersion": 1}})
+    await db.password_reset_tokens.update_one({"tokenHash": token_hash}, {"$set": {"used": True, "usedAt": now()}})
     return {"ok": True, "message": "Password berhasil diperbarui."}
 
 @api.get("/dashboard")
@@ -1236,6 +1338,11 @@ async def create_payment(data: PaymentCreateInput, user=Depends(current_user)):
     plan = await db.plans.find_one({"slug": data.planSlug, "isActive": True}, {"_id": 0})
     if not plan or data.planSlug == "trial":
         raise HTTPException(400, "Paket tidak ditemukan")
+    if data.proofUrl:
+        file_id = data.proofUrl.rsplit("/", 1)[-1]
+        proof = await db.files.find_one({"id": file_id, "userId": user["id"]}, {"_id": 0, "contentType": 1})
+        if not proof or proof.get("contentType") not in {"image/jpeg", "image/png", "image/webp"}:
+            raise HTTPException(400, "Bukti pembayaran harus berupa gambar milik akun Anda.")
     settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
     add_price = settings.get("additionalWebsitePrice", ADDITIONAL_WEBSITE_PRICE)
     extra = max(0, int(data.additionalWebsiteCount or 0))
@@ -1413,7 +1520,7 @@ async def admin_user_action(uid_: str, data: UserAdminAction, admin=Depends(admi
         await notify(uid_, "Berlangganan dibatalkan", "Admin membatalkan berlangganan Anda.")
     elif action == "reset_password":
         raw = secrets.token_urlsafe(32)
-        await db.password_reset_tokens.insert_one({"token": raw, "userId": uid_, "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(), "used": False, "createdAt": now()})
+        await db.password_reset_tokens.insert_one({"tokenHash": reset_token_hash(raw), "userId": uid_, "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(), "used": False, "createdAt": now()})
         await log_activity(admin["id"], "reset_password", uid_, notes="Password reset diinisiasi admin")
         return {"ok": True, "resetToken": raw, "resetLink": f"/reset-password?token={raw}"}
     else:
@@ -1768,9 +1875,10 @@ async def admin_delete_coupon(code: str, admin=Depends(admin_user)):
     return {"ok": True}
 
 @api.post("/public/{slug}/track")
-async def track_event(slug: str, data: TrackInput):
+async def track_event(slug: str, data: TrackInput, request: Request):
     field = "pageViews" if data.type == "view" else "whatsappClicks" if data.type == "whatsapp" else None
     if not field: raise HTTPException(400, "Tipe tidak dikenal")
+    await enforce_rate_limit(request, "public-track", f"{slug}:{data.type}", limit=30, window_seconds=60)
     await db.websites.update_one({"slug": slug, "status": "PUBLISHED"}, {"$inc": {field: 1}})
     return {"ok": True}
 
@@ -2282,15 +2390,13 @@ async def wa_media_download(message_id: str, _=Depends(admin_user)):
 
 
 @api.post("/auth/check-wa")
-async def check_wa(payload: dict):
-    """Check whether a WhatsApp number is already registered. Returns 409 if taken."""
+async def check_wa(payload: dict, request: Request):
+    """Validate format without revealing whether an account owns the number."""
     phone_raw = payload.get("phone") if isinstance(payload, dict) else getattr(payload, "phone", "")
     phone = wa_service.normalize_number(phone_raw)
     if not phone:
         raise HTTPException(400, "Nomor WhatsApp tidak valid")
-    async for u in db.users.find({}, {"whatsapp": 1}):
-        if wa_service.normalize_number(u.get("whatsapp", "")) == phone:
-            raise HTTPException(409, "Nomor WhatsApp sudah terdaftar")
+    await enforce_rate_limit(request, "check-wa", phone, limit=3, window_seconds=600)
     return {"ok": True}
 
 app.include_router(api)
@@ -2307,8 +2413,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_origins=cors_origins,
     allow_origin_regex=cors_origin_regex,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 @app.on_event("startup")
@@ -2377,9 +2483,13 @@ async def startup():
     if not await db.settings.find_one({"id": "platform"}):
         await db.settings.insert_one({**DEFAULT_SETTINGS, "createdAt": now()})
 
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@usahaku.id").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
-    if not await db.users.find_one({"email": admin_email}):
+    admin_email = (os.environ.get("ADMIN_EMAIL") or "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD") or ""
+    if bool(admin_email) != bool(admin_password):
+        raise RuntimeError("ADMIN_EMAIL dan ADMIN_PASSWORD harus diatur bersama-sama.")
+    if admin_email and len(admin_password) < 12:
+        raise RuntimeError("ADMIN_PASSWORD bootstrap harus minimal 12 karakter.")
+    if admin_email and not await db.users.find_one({"email": admin_email}):
         await db.users.insert_one({
             "id": uid(),
             "name": "Admin Situska",
@@ -2391,6 +2501,8 @@ async def startup():
             "websiteQuota": 999,
             "createdAt": now()
         })
+    elif not admin_email:
+        log.warning("Administrator bootstrap tidak dibuat: ADMIN_EMAIL/ADMIN_PASSWORD belum diatur.")
 
     # Legacy catalogue retained below only for upgrade-history context.  The
     # current public learning centre is defined by PLATFORM_ARTICLES.

@@ -91,6 +91,7 @@ credentials.json
 backend/uploads/
 backend/.runtime/
 gowa-data/
+tools/gowa/storages/
 backend/server.py.bak
 *-run.log
 *-run.err
