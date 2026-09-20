@@ -6,7 +6,7 @@ import { APP_NAME, PUBLIC_SITE_HOST, SEO_ORIGIN } from "../lib/config";
 import { SeoHead, originUrl } from "../lib/seo";
 import "./Landing.css";
 
-function PublicNav() {
+export function PublicNav() {
   const [open, setOpen] = useState(false);
   return (
     <header className="topbar">
@@ -17,16 +17,18 @@ function PublicNav() {
           <a data-testid="nav-how" href="#cara-kerja">Cara kerja</a>
           <a data-testid="nav-pricing" href="#harga">Harga</a>
           <a data-testid="nav-examples" href="#contoh">Contoh</a>
-          <Link data-testid="nav-website-usaha" to="/website-usaha">Website usaha</Link>
-          <Link data-testid="nav-website-umkm" to="/website-umkm">Website UMKM</Link>
           <Link data-testid="nav-articles" to="/artikel">Artikel</Link>
           <Link data-testid="nav-login" to="/login">Masuk</Link>
           <Link data-testid="nav-register" className="nav-cta" to="/register">Buat Website Gratis <ArrowRight size={15} /></Link>
         </nav>
-        <button data-testid="mobile-menu-button" className="mobile-menu" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
+        <button data-testid="mobile-menu-button" className="mobile-menu" onClick={() => setOpen(!open)} aria-label={open ? "Tutup menu navigasi" : "Buka menu navigasi"} aria-expanded={open}>{open ? <X /> : <Menu />}</button>
       </div>
     </header>
   );
+}
+
+export function PublicFooter() {
+  return <footer><div className="container"><Brand /><span>© 2026 {APP_NAME}. Untuk usaha yang terus bertumbuh.</span></div></footer>;
 }
 
 const Step = ({ n, title, text }) => <div className="step"><b>{n}</b><div><h3>{title}</h3><p>{text}</p></div></div>;
@@ -59,11 +61,11 @@ export default function Landing() {
   return (
     <div className="landing">
       <SeoHead
-        title="Website Usaha Profesional dengan AI | Situska"
-        description="Buat website usaha profesional dengan AI tanpa coding. Masukkan informasi usaha, tambahkan produk, dan buat website siap digunakan dalam beberapa klik."
+        title="Buat Website Usaha Gratis Tanpa Coding | Situska"
+        description="Buat website usaha profesional tanpa coding bersama Situska. Tambahkan produk, pilih tampilan, lalu publish website usaha Anda dengan mudah."
         image="/assets/showcase/kopi-senja-cover.png"
         canonical="/"
-        schema={[{ "@context": "https://schema.org", "@type": "SoftwareApplication", name: APP_NAME, applicationCategory: "BusinessApplication", operatingSystem: "Web", description: "Platform untuk membuat website usaha profesional dengan AI tanpa coding.", offers: { "@type": "Offer", price: "0", priceCurrency: "IDR" } }, { "@context": "https://schema.org", "@type": "Organization", name: APP_NAME, url: SEO_ORIGIN }, { "@context": "https://schema.org", "@type": "WebSite", name: APP_NAME, url: SEO_ORIGIN }]}
+        schema={[{ "@context": "https://schema.org", "@type": "SoftwareApplication", name: APP_NAME, applicationCategory: "BusinessApplication", operatingSystem: "Web", description: "Platform untuk membuat website usaha profesional tanpa coding.", offers: { "@type": "Offer", price: "0", priceCurrency: "IDR" } }, { "@context": "https://schema.org", "@type": "Organization", name: APP_NAME, url: SEO_ORIGIN, logo: `${SEO_ORIGIN}/assets/showcase/kopi-senja-cover.png` }, { "@context": "https://schema.org", "@type": "WebSite", name: APP_NAME, url: SEO_ORIGIN }]}
       />
       <PublicNav />
       <main>
@@ -71,7 +73,7 @@ export default function Landing() {
           <div className="hero-copy reveal">
             <div className="eyebrow"><span className="eyebrow-dot" /> Dibuat untuk UMKM Indonesia</div>
             <h1>Website usaha<br /><em>siap dalam beberapa klik.</em></h1>
-            <p className="hero-text">Masukkan informasi usaha, tambahkan produk, lalu Situska membantu membuat website yang siap memperkenalkan bisnismu—tanpa coding, tanpa ribet.</p>
+            <p className="hero-text">Masukkan informasi usaha, tambahkan produk, pilih tampilan, lalu publish. Situska membantu Anda membuat website usaha dengan mudah tanpa coding.</p>
             <div className="hero-actions">
               <Link data-testid="hero-register-button" className="btn btn-primary" to="/register">Buat Website Gratis <ArrowRight size={17} /></Link>
               <a data-testid="hero-how-link" className="text-link" href="#cara-kerja">Lihat cara kerja <ChevronRight size={16} /></a>
@@ -130,24 +132,25 @@ export default function Landing() {
 
         <section id="cara-kerja" className="section container">
           <div className="section-heading">
-            <div><div className="eyebrow">CARA YANG LEBIH MUDAH</div><h2>Dari usaha lokal,<br /><span>terlihat profesional.</span></h2></div>
-            <p>{APP_NAME} membantu kamu membuat website usaha profesional dalam beberapa langkah sederhana.</p>
+            <div><div className="eyebrow">CARA YANG LEBIH MUDAH</div><h2>Cara membuat<br /><span>website usaha di Situska.</span></h2></div>
+            <p>{APP_NAME} membantu Anda buat website usaha dalam beberapa langkah sederhana.</p>
           </div>
           <div className="steps">
             <Step n="01" title="Isi informasi usaha" text="Ceritakan nama, kategori, lokasi, dan kontak bisnismu." />
             <Step n="02" title="Tambahkan produk" text="Upload produk beserta harga dan deskripsi singkat." />
-            <Step n="03" title="AI membuat website" text="Dapatkan tampilan yang sesuai dengan karakter usahamu." />
-            <Step n="04" title="Edit & publish" text="Sesuaikan seperlunya, lalu bagikan ke pelanggan." />
+            <Step n="03" title="Gunakan template" text="Pilih template bila Anda ingin mulai lebih cepat." />
+            <Step n="04" title="Pilih tampilan" text="Sesuaikan tampilan dengan karakter usaha Anda." />
+            <Step n="05" title="Publish website" text="Bagikan website kepada pelanggan saat sudah siap." />
           </div>
         </section>
 
         <section id="fitur" className="feature-band">
           <div className="container">
             <div className="eyebrow">SEMUA YANG KAMU BUTUHKAN</div>
-            <h2>Satu tempat untuk<br /><span>mengembangkan usahamu.</span></h2>
+            <h2>Buat website UMKM<br /><span>tanpa coding.</span></h2>
             <div className="feature-grid">
               <Feature icon="✦" title="Website dengan AI" text="Dari informasi usaha menjadi website profesional dengan bantuan AI." />
-              <Feature icon="▦" title="Katalog produk" text="Tampilkan produk, harga, dan foto dengan rapi." />
+              <Feature icon="▦" title="Katalog produk" text="Buat katalog produk online dengan foto, harga, dan informasi yang rapi." />
               <Feature icon="↗" title="Terhubung WhatsApp" text="Pelanggan dapat langsung menghubungi bisnis melalui WhatsApp." />
               <Feature icon="⌖" title="Siap untuk mobile" text="Website usaha tampil optimal di perangkat mobile." />
               <Feature icon="◉" title="Google Maps" text="Tampilkan lokasi usaha agar pelanggan mudah menemukan bisnis." />
@@ -160,8 +163,8 @@ export default function Landing() {
 
         <section id="contoh" className="section container example-section">
           <div className="section-heading">
-            <div><div className="eyebrow">CONTOH WEBSITE</div><h2>Dibuat untuk<br /><span>berbagai jenis usaha.</span></h2></div>
-            <p>AI menyesuaikan gaya visual sesuai karakter bisnismu.</p>
+            <div><div className="eyebrow">CONTOH WEBSITE</div><h2>Buat website untuk<br /><span>berbagai jenis usaha.</span></h2></div>
+            <p>Dari kuliner, toko, jasa, sampai bisnis lokal dan usaha kecil—Situska menyesuaikan gaya visual sesuai karakter bisnis Anda.</p>
           </div>
           <div className="example-grid">
             <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" description="Contoh website usaha coffee shop dengan menu dan lokasi." slug="demo-kopi-senja" color="linear-gradient(135deg,#03045E,#0077B6)" />
@@ -186,22 +189,42 @@ export default function Landing() {
           </div>
         </section>
 
+        <section className="section container product-info-section">
+          <div className="section-heading">
+            <div><div className="eyebrow">PRODUK & INFORMASI</div><h2>Tampilkan produk dan<br /><span>informasi usaha.</span></h2></div>
+            <p>Website toko online Anda dapat memuat katalog produk, harga, lokasi, dan tombol WhatsApp agar pelanggan mudah menghubungi usaha Anda.</p>
+          </div>
+        </section>
+
+        <section className="section container theme-section">
+          <div className="section-heading">
+            <div><div className="eyebrow">TAMPILAN SESUAI USAHA</div><h2>Pilih tema website<br /><span>sesuai usaha Anda.</span></h2></div>
+            <p>Pilih tampilan yang terasa tepat untuk usaha Anda, kemudian sesuaikan konten seperlunya tanpa perlu memahami coding.</p>
+          </div>
+        </section>
+
+        <section className="section container faq-section" aria-labelledby="faq-title">
+          <div className="section-heading"><div><div className="eyebrow">PERTANYAAN UMUM</div><h2 id="faq-title">Mulai dengan<br /><span>lebih yakin.</span></h2></div><p>Jawaban singkat sebelum Anda membuat website usaha pertama.</p></div>
+          <div className="faq-list">
+            <details><summary>Apakah membuat website usaha di Situska harus bisa coding?</summary><p>Tidak. Anda cukup mengisi informasi usaha, produk, dan memilih tampilan.</p></details>
+            <details><summary>Apakah Situska bisa digunakan untuk UMKM?</summary><p>Ya. Situska dibuat untuk membantu UMKM, toko, usaha kuliner, jasa, dan bisnis lokal tampil online.</p></details>
+            <details><summary>Apakah saya bisa menampilkan produk di website?</summary><p>Bisa. Tambahkan foto, harga, dan deskripsi untuk membuat katalog produk online.</p></details>
+            <details><summary>Apakah website bisa menampilkan kontak WhatsApp?</summary><p>Bisa. Pelanggan dapat menghubungi usaha Anda langsung melalui tombol WhatsApp.</p></details>
+            <details><summary>Apakah Situska gratis?</summary><p>Anda dapat mulai membuat website usaha gratis dengan paket Gratis.</p></details>
+          </div>
+        </section>
+
         <section className="final-cta">
           <div className="container final-inner">
             <div>
               <div className="eyebrow">BISNISMU LAYAK TERLIHAT</div>
-              <h2>Siap membuat usahamu<br />lebih mudah ditemukan?</h2>
+              <h2>Mulai buat website usaha<br />Anda hari ini.</h2>
             </div>
-            <Link data-testid="final-register-button" className="btn btn-light" to="/register">Mulai sekarang <ArrowRight size={17} /></Link>
+            <Link data-testid="final-register-button" className="btn btn-light" to="/register">Buat Website Gratis <ArrowRight size={17} /></Link>
           </div>
         </section>
       </main>
-      <footer>
-        <div className="container">
-          <Brand />
-          <span>© 2026 {APP_NAME}. Untuk usaha yang terus bertumbuh.</span>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 }

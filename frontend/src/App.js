@@ -12,7 +12,7 @@ import { PublicRoute, OwnerAccess } from "./pages/PublicSite";
 import { AdminOverview, AdminUsers, AdminUserDetail, AdminPayments, AdminPaymentDetail, AdminPlans, AdminActivity, AdminSettings, AdminWebsites, AdminGeneratorTemplates } from "./pages/Admin";
 import { UserCoupons, AdminCoupons } from "./pages/Coupons";
 import { WaCenter, WaContacts } from "./pages/WaAdmin";
-import { AdminArticles, AdminBuildzaArticles, PublicArticle, PublicBuildzaArticle, PublicBuildzaArticles, WebsiteArticles } from "./pages/Articles";
+import { AdminArticles, AdminBuildzaArticles, PublicArticle, PublicArticleCategory, PublicBuildzaArticle, PublicBuildzaArticles, PublicWebsiteArticles, WebsiteArticles } from "./pages/Articles";
 import { SEO_PAGE_KEYS, SeoLandingPage } from "./pages/SeoPages";
 import { loadTemplateCatalog } from "./lib/generatorTemplateCatalog";
 import { NoIndex } from "./lib/seo";
@@ -34,9 +34,11 @@ export default function App() {
         <Route path="/reset-password" element={<><NoIndex /><ResetPassword /></>} />
         <Route path="/verify-wa" element={<><NoIndex /><VerifyWA /></>} />
         <Route path="/artikel" element={<PublicBuildzaArticles />} />
+        <Route path="/artikel/kategori/:categorySlug" element={<PublicArticleCategory />} />
         <Route path="/artikel/:articleSlug" element={<PublicBuildzaArticle />} />
         {SEO_PAGE_KEYS.map((pageKey) => <Route key={pageKey} path={`/${pageKey}`} element={<SeoLandingPage pageKey={pageKey} />} />)}
         <Route path="/site/:slug/artikel/:articleSlug" element={<PublicArticle />} />
+        <Route path="/site/:slug/artikel" element={<PublicWebsiteArticles />} />
         <Route path="/site/:slug" element={<PublicRoute />} />
         <Route path="/owner-access/:slug" element={<><NoIndex /><OwnerAccess /></>} />
 

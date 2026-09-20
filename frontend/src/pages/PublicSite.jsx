@@ -25,6 +25,12 @@ export function PublicRoute() {
         .catch(() => setData(localShowcase));
     });
   }, [slug]);
+  useEffect(() => {
+    if (!data || !window.location.hash) return undefined;
+    const targetId = window.location.hash.slice(1);
+    const timer = window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    return () => window.clearTimeout(timer);
+  }, [data]);
   if (error) return <NotFoundPage />;
   if (!data) return <Loading text="Membuka website..." />;
   if (data.maintenance) return <MaintenancePage slug={slug} businessName={data.businessName} />;

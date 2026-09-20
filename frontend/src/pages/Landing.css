@@ -66,6 +66,12 @@
   box-shadow:0 12px 26px rgba(3,4,94,.075);
 }
 
+.landing .product-info-section,.landing .theme-section{padding-top:32px;padding-bottom:32px}
+.landing .faq-list{max-width:850px;display:grid;gap:10px}
+.landing .faq-list details{border:1px solid #D5EEF5;border-radius:10px;padding:16px 18px;background:#fff}
+.landing .faq-list summary{cursor:pointer;font-weight:700;color:var(--landing-primary-dark)}
+.landing .faq-list p{margin:12px 0 0;color:#526173;line-height:1.6}
+
 .landing .hero{
   grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);
 }

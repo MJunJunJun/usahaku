@@ -7,6 +7,7 @@ import { APP_NAME } from "../lib/config";
 import { TEMPLATE_CATEGORIES } from "../lib/contentTemplates";
 import { LOGO_STYLE_OPTIONS } from "../lib/imageTemplates";
 import { applyTemplateCatalog, makeDefaultTemplateCatalog } from "../lib/generatorTemplateCatalog";
+import "./Articles.css";
 
 const AdminHead = ({ eyebrow, title, subtitle, extra }) => (
   <div className="page-head">
@@ -538,6 +539,33 @@ export function AdminWebsites() {
 
 const catalogId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+function CoverCropDialog({ item, onClose, onSave }) {
+  const [zoom, setZoom] = useState(1);
+  const [x, setX] = useState(0);
+  const [y, setY] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      image.src = resolveMediaUrl(item.url);
+      await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; });
+      const canvas = document.createElement("canvas"); canvas.width = 1600; canvas.height = 900;
+      const context = canvas.getContext("2d");
+      const scale = Math.max(canvas.width / image.width, canvas.height / image.height) * zoom;
+      const width = image.width * scale; const height = image.height * scale;
+      context.drawImage(image, (canvas.width - width) / 2 + x * canvas.width, (canvas.height - height) / 2 + y * canvas.height, width, height);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", .9));
+      if (!blob) throw new Error("Gagal membuat hasil crop.");
+      const uploaded = await uploadFile(new File([blob], `cover-crop-${Date.now()}.jpg`, { type: "image/jpeg" }));
+      await onSave(uploaded.url); onClose();
+    } catch (error) { window.alert("Gagal menyimpan crop. Pastikan gambar dapat diakses lalu coba lagi."); }
+    finally { setBusy(false); }
+  };
+  return <div className="crop-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Edit crop cover"><div className="crop-dialog"><div className="section-row"><div><h2>Edit crop cover</h2><p>Atur skala dan posisi gambar, lalu simpan hasilnya.</p></div><button className="icon-button" onClick={onClose}>Tutup</button></div><div className="crop-stage"><img src={resolveMediaUrl(item.url)} alt="Preview crop" style={{ transform: `translate(${x * 100}%, ${y * 100}%) scale(${zoom})` }} /></div><div className="crop-controls"><label>Perbesar<input type="range" min="1" max="2.5" step="0.05" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label><label>Geser horizontal<input type="range" min="-0.5" max="0.5" step="0.01" value={x} onChange={(e) => setX(Number(e.target.value))} /></label><label>Geser vertikal<input type="range" min="-0.5" max="0.5" step="0.01" value={y} onChange={(e) => setY(Number(e.target.value))} /></label></div><div className="wizard-actions"><Button variant="outline" onClick={onClose}>Batal</Button><Button onClick={save} disabled={busy}>{busy ? "Menyimpan crop..." : "Simpan hasil crop"}</Button></div></div></div>;
+}
+
 export function AdminGeneratorTemplates() {
   // Render the local defaults immediately. The persisted catalogue is fetched
   // afterwards so a slow database/proxy never leaves the admin on a blank
@@ -550,6 +578,7 @@ export function AdminGeneratorTemplates() {
   const [uploading, setUploading] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [cropping, setCropping] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -603,6 +632,7 @@ export function AdminGeneratorTemplates() {
       </section>)}</div><button className="add-product" onClick={addContent}><Plus size={16} />Tambah template teks</button>
     </>}
     {tab === "logo" && <><div className="template-admin-list">{catalog.logos.map((item, index) => <section className="template-editor-card logo-editor" key={item.id}><div className="template-card-head"><b>Logo {index + 1}</b><button className="icon-button danger" onClick={() => remove("logos", item.id)}><Trash2 size={16} /></button></div><div className="form-grid"><label>Nama template<input value={item.label || ""} onChange={(e) => change("logos", item.id, "label", e.target.value)} /></label><label>Gaya logo<select value={item.styleIndex ?? 0} onChange={(e) => change("logos", item.id, "styleIndex", Number(e.target.value))}>{LOGO_STYLE_OPTIONS.map((style) => <option value={style.styleIndex} key={style.id}>{style.label}</option>)}</select></label><label>Warna default (opsional)<input placeholder="#0077B6" value={item.color || ""} onChange={(e) => change("logos", item.id, "color", e.target.value)} /></label><label>Gambar logo kustom (opsional)<input value={item.url || ""} placeholder="URL gambar atau upload" onChange={(e) => change("logos", item.id, "url", e.target.value)} /></label></div><label className="template-upload"><Upload size={15} />{uploading === item.id ? "Mengunggah..." : "Upload logo kustom"}<input type="file" accept="image/*" onChange={(e) => upload("logos", item.id, e.target.files?.[0])} /></label></section>)}</div><button className="add-product" onClick={addLogo}><Plus size={16} />Tambah template logo</button></>}
-    {tab === "cover" && <><div className="template-admin-list">{covers.map((item, index) => <section className="template-editor-card cover-editor" key={item.id}><div className="template-card-head"><b>Cover {index + 1}</b><button className="icon-button danger" onClick={() => remove("covers", item.id)}><Trash2 size={16} /></button></div><div className="cover-editor-grid"><div className="cover-admin-preview" style={item.url ? { backgroundImage: `url(${resolveMediaUrl(item.url)})` } : undefined}>{!item.url && "Belum ada gambar"}</div><div className="form-grid"><label>Nama template<input value={item.label || ""} onChange={(e) => change("covers", item.id, "label", e.target.value)} /></label><label>Posisi gambar<select value={item.position || "center"} onChange={(e) => change("covers", item.id, "position", e.target.value)}><option value="center">Tengah</option><option value="top">Atas</option><option value="bottom">Bawah</option></select></label><label className="full">URL gambar<input value={item.url || ""} placeholder="URL gambar atau upload" onChange={(e) => change("covers", item.id, "url", e.target.value)} /></label><label>Filter<select value={item.filter || "none"} onChange={(e) => change("covers", item.id, "filter", e.target.value)}><option value="none">Normal</option><option value="brightness(.9)">Lebih gelap</option><option value="brightness(1.08)">Lebih terang</option><option value="saturate(.8)">Lembut</option></select></label></div></div><label className="template-upload"><Upload size={15} />{uploading === item.id ? "Mengunggah..." : "Upload cover image"}<input type="file" accept="image/*" onChange={(e) => upload("covers", item.id, e.target.files?.[0])} /></label></section>)}</div><button className="add-product" onClick={addCover}><Plus size={16} />Tambah cover image</button></>}
+    {tab === "cover" && <><div className="template-admin-list">{covers.map((item, index) => <section className="template-editor-card cover-editor" key={item.id}><div className="template-card-head"><b>Cover {index + 1}</b><button className="icon-button danger" onClick={() => remove("covers", item.id)}><Trash2 size={16} /></button></div><div className="cover-editor-grid"><div className="cover-admin-preview" style={item.url ? { backgroundImage: `url(${resolveMediaUrl(item.url)})` } : undefined}>{!item.url && "Belum ada gambar"}</div><div className="form-grid"><label>Nama template<input value={item.label || ""} onChange={(e) => change("covers", item.id, "label", e.target.value)} /></label><label>Posisi gambar<select value={item.position || "center"} onChange={(e) => change("covers", item.id, "position", e.target.value)}><option value="center">Tengah</option><option value="top">Atas</option><option value="bottom">Bawah</option></select></label><label className="full">URL gambar<input value={item.url || ""} placeholder="URL gambar atau upload" onChange={(e) => change("covers", item.id, "url", e.target.value)} /></label><label>Filter<select value={item.filter || "none"} onChange={(e) => change("covers", item.id, "filter", e.target.value)}><option value="none">Normal</option><option value="brightness(.9)">Lebih gelap</option><option value="brightness(1.08)">Lebih terang</option><option value="saturate(.8)">Lembut</option></select></label></div></div><div className="cover-editor-actions"><button className="btn btn-outline" disabled={!item.url} onClick={() => setCropping(item)}>Edit crop</button><label className="template-upload"><Upload size={15} />{uploading === item.id ? "Mengunggah..." : "Upload cover image"}<input type="file" accept="image/*" onChange={(e) => upload("covers", item.id, e.target.files?.[0])} /></label></div></section>)}</div><button className="add-product" onClick={addCover}><Plus size={16} />Tambah cover image</button></>}
+    {cropping && <CoverCropDialog item={cropping} onClose={() => setCropping(null)} onSave={async (url) => { const oldUrl = cropping.url; const nextCatalog = { ...catalog, covers: catalog.covers.map((item) => item.id === cropping.id ? { ...item, url } : item) }; try { const { data } = await api.put("/admin/generator-templates", { catalog: nextCatalog }); setCatalog(data.catalog); applyTemplateCatalog(data.catalog); const result = await api.post("/admin/generator-templates/covers/replace-image", { oldUrl, newUrl: url }); setMsg(`Hasil crop tersimpan dan diterapkan ke ${result.data.updatedWebsites} website dan ${result.data.updatedArticles} artikel yang memakai cover ini.`); } catch (e) { setErr(errorText(e)); throw e; } }} />}
   </div>;
 }

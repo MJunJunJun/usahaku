@@ -23,9 +23,10 @@ export function SeoHead({ title, description, image, type = "website", schema, c
     let canonicalTag = document.head.querySelector('link[rel="canonical"]');
     if (!canonicalTag) { canonicalTag = document.createElement("link"); canonicalTag.rel = "canonical"; document.head.appendChild(canonicalTag); }
     canonicalTag.href = canonicalUrl;
-    let jsonLd = document.head.querySelector('script[data-buildza-schema]');
-    if (!jsonLd) { jsonLd = document.createElement("script"); jsonLd.type = "application/ld+json"; jsonLd.dataset.buildzaSchema = "true"; document.head.appendChild(jsonLd); }
-    jsonLd.text = schema ? JSON.stringify(schema) : "";
+    let jsonLd = document.head.querySelector('script[data-situska-schema]');
+    if (!jsonLd) { jsonLd = document.createElement("script"); jsonLd.type = "application/ld+json"; jsonLd.dataset.situskaSchema = "true"; document.head.appendChild(jsonLd); }
+    const normalizedSchema = Array.isArray(schema) ? { "@context": "https://schema.org", "@graph": schema.map(({ "@context": _context, ...item }) => item) } : schema;
+    jsonLd.text = normalizedSchema ? JSON.stringify(normalizedSchema) : "";
   }, [title, description, image, type, schema, canonical, robots]);
   return null;
 }

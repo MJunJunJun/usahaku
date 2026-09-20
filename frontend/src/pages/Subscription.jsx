@@ -32,7 +32,7 @@ export function Subscription() {
     <div className="subscription-page">
       <div className="page-head compact">
         <div>
-          <div className="eyebrow">PAKET USAHAKU</div>
+          <div className="eyebrow">PAKET SITUSKA</div>
           <h1>Pilih ruang untuk tumbuh.</h1>
           <p>Semua paket dimulai dengan website yang profesional.</p>
         </div>

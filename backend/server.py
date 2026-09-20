@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr
@@ -10,6 +11,7 @@ from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio
 import hmac as _hmac
+from platform_article_catalog import PLATFORM_ARTICLES
 
 import wa_service
 from wa_templates import render_template, rupiah
@@ -109,7 +111,7 @@ DEFAULT_PLANS = [
 DEFAULT_SETTINGS = {
     "id": "platform",
     "applicationName": os.environ.get("APP_NAME", "Situska"),
-    "supportEmail": os.environ.get("SUPPORT_EMAIL", "hello@buildza.id"),
+    "supportEmail": os.environ.get("SUPPORT_EMAIL", "hello@situska.com"),
     "adminWhatsapp": "6281234567890",
     "bankName": "Bank BCA",
     "accountName": "PT Situska Digital Indonesia",
@@ -266,9 +268,16 @@ class ProductInput(BaseModel):
 
 class ArticleInput(BaseModel):
     title: str
+    seoTitle: str = ""
+    slug: str = ""
+    category: str = "Website UMKM"
+    focusKeyword: str = ""
     excerpt: str = ""
     content: str = ""
     coverImageUrl: str = ""
+    coverImageAlt: str = ""
+    canonicalUrl: str = ""
+    templateId: str = ""
     status: str = "DRAFT"
 
 class AIEditInput(BaseModel):
@@ -664,12 +673,12 @@ async def create_article(site_id: str, data: ArticleInput, user=Depends(current_
     site = await owned_site(site_id, user)
     title = data.title.strip()
     if not title: raise HTTPException(400, "Judul artikel wajib diisi")
-    base_slug = slugify(title)
+    base_slug = slugify(data.slug.strip() or title)
     slug = base_slug
     number = 2
     while await db.articles.find_one({"websiteId": site_id, "slug": slug}):
         slug = f"{base_slug}-{number}"; number += 1
-    article = {"id": uid(), "websiteId": site_id, "websiteSlug": site.get("slug") or site.get("storeSlug", ""), "title": title, "slug": slug, "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "createdAt": now(), "updatedAt": now()}
+    article = {"id": uid(), "websiteId": site_id, "websiteSlug": site.get("slug") or site.get("storeSlug", ""), "title": title, "seoTitle": data.seoTitle.strip(), "slug": slug, "category": data.category.strip() or "Website UMKM", "focusKeyword": data.focusKeyword.strip(), "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "coverImageAlt": data.coverImageAlt.strip(), "canonicalUrl": data.canonicalUrl.strip(), "templateId": data.templateId.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "createdAt": now(), "updatedAt": now()}
     if article["status"] == "PUBLISHED": article["publishedAt"] = now()
     await db.articles.insert_one(article)
     return public(article)
@@ -679,7 +688,11 @@ async def update_article(article_id: str, data: ArticleInput, user=Depends(curre
     article = await owned_article(article_id, user)
     title = data.title.strip()
     if not title: raise HTTPException(400, "Judul artikel wajib diisi")
-    updates = {"title": title, "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "updatedAt": now()}
+    base_slug = slugify(data.slug.strip() or title)
+    requested_slug, number = base_slug, 2
+    while requested_slug != article.get("slug") and await db.articles.find_one({"websiteId": article["websiteId"], "slug": requested_slug, "id": {"$ne": article_id}}):
+        requested_slug = f"{base_slug}-{number}"; number += 1
+    updates = {"title": title, "seoTitle": data.seoTitle.strip(), "slug": requested_slug, "category": data.category.strip() or "Website UMKM", "focusKeyword": data.focusKeyword.strip(), "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "coverImageAlt": data.coverImageAlt.strip(), "canonicalUrl": data.canonicalUrl.strip(), "templateId": data.templateId.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "updatedAt": now()}
     if updates["status"] == "PUBLISHED" and not article.get("publishedAt"): updates["publishedAt"] = now()
     await db.articles.update_one({"id": article_id}, {"$set": updates})
     return public(await db.articles.find_one({"id": article_id}, {"_id": 0}))
@@ -1435,10 +1448,10 @@ async def admin_buildza_articles(_=Depends(admin_user)):
 async def create_buildza_article(data: ArticleInput, admin=Depends(admin_user)):
     title = data.title.strip()
     if not title: raise HTTPException(400, "Judul artikel wajib diisi")
-    base_slug, slug, number = slugify(title), slugify(title), 2
+    base_slug, slug, number = slugify(data.slug.strip() or title), slugify(data.slug.strip() or title), 2
     while await db.platform_articles.find_one({"slug": slug}):
         slug = f"{base_slug}-{number}"; number += 1
-    article = {"id": uid(), "title": title, "slug": slug, "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "createdAt": now(), "updatedAt": now(), "authorId": admin["id"]}
+    article = {"id": uid(), "title": title, "seoTitle": data.seoTitle.strip(), "slug": slug, "category": data.category.strip() or "Website UMKM", "focusKeyword": data.focusKeyword.strip(), "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "coverImageAlt": data.coverImageAlt.strip(), "canonicalUrl": data.canonicalUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "createdAt": now(), "updatedAt": now(), "authorId": admin["id"]}
     if article["status"] == "PUBLISHED": article["publishedAt"] = now()
     await db.platform_articles.insert_one(article)
     await log_activity(admin["id"], "create_buildza_article", None, article["id"], title)
@@ -1449,8 +1462,17 @@ async def update_buildza_article(article_id: str, data: ArticleInput, admin=Depe
     article = await db.platform_articles.find_one({"id": article_id}, {"_id": 0})
     if not article: raise HTTPException(404, "Artikel Situska tidak ditemukan")
     if not data.title.strip(): raise HTTPException(400, "Judul artikel wajib diisi")
-    updates = {"title": data.title.strip(), "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "updatedAt": now()}
+    # Empty slug follows the current title. A collision receives the same
+    # deterministic numeric suffix used when creating a new article.
+    base_slug = slugify(data.slug.strip() or data.title.strip())
+    requested_slug, number = base_slug, 2
+    while requested_slug != article["slug"] and await db.platform_articles.find_one({"$or": [{"slug": requested_slug}, {"oldSlugs": requested_slug}], "id": {"$ne": article_id}}):
+        requested_slug = f"{base_slug}-{number}"
+        number += 1
+    updates = {"title": data.title.strip(), "seoTitle": data.seoTitle.strip(), "slug": requested_slug, "category": data.category.strip() or "Website UMKM", "focusKeyword": data.focusKeyword.strip(), "excerpt": data.excerpt.strip(), "content": data.content.strip(), "coverImageUrl": data.coverImageUrl.strip(), "coverImageAlt": data.coverImageAlt.strip(), "canonicalUrl": data.canonicalUrl.strip(), "status": "PUBLISHED" if data.status == "PUBLISHED" else "DRAFT", "updatedAt": now()}
     if updates["status"] == "PUBLISHED" and not article.get("publishedAt"): updates["publishedAt"] = now()
+    if article.get("status") == "PUBLISHED" and requested_slug != article["slug"]:
+        updates["oldSlugs"] = list(dict.fromkeys([*(article.get("oldSlugs") or []), article["slug"]]))
     await db.platform_articles.update_one({"id": article_id}, {"$set": updates})
     return public(await db.platform_articles.find_one({"id": article_id}, {"_id": 0}))
 
@@ -1468,8 +1490,18 @@ async def public_buildza_articles():
 @api.get("/content/buildza-articles/{article_slug}")
 async def public_buildza_article(article_slug: str):
     article = await db.platform_articles.find_one({"slug": article_slug, "status": "PUBLISHED"}, {"_id": 0})
-    if not article: raise HTTPException(404, "Artikel tidak ditemukan")
+    if not article:
+        article = await db.platform_articles.find_one({"oldSlugs": article_slug, "status": "PUBLISHED"}, {"_id": 0})
+        if article: return {**article, "redirectTo": f"/artikel/{article['slug']}"}
+        raise HTTPException(404, "Artikel tidak ditemukan")
     return article
+
+@app.get("/artikel/{article_slug}", include_in_schema=False)
+async def legacy_article_redirect(article_slug: str):
+    """Serve a real HTTP 301 for historical public article URLs via nginx."""
+    article = await db.platform_articles.find_one({"oldSlugs": article_slug, "status": "PUBLISHED"}, {"_id": 0, "slug": 1})
+    if not article: raise HTTPException(404, "Artikel tidak ditemukan")
+    return RedirectResponse(url=f"/artikel/{article['slug']}", status_code=301)
 
 @api.get("/admin/payments")
 async def admin_payments(_=Depends(admin_user)):
@@ -1627,7 +1659,7 @@ async def sitemap(request: Request):
     from xml.sax.saxutils import escape
     configured = (os.environ.get("PUBLIC_APP_URL") or "https://situska.com").strip().rstrip("/")
     base = configured
-    seo_pages = ["website-usaha", "website-umkm", "website-toko-online", "website-cafe", "website-restoran", "website-bengkel", "website-barbershop", "website-bakery", "website-jasa", "artikel"]
+    seo_pages = ["website-toko-online", "website-cafe", "website-restoran", "website-bengkel", "website-barbershop", "website-bakery", "website-jasa", "artikel"]
     pages = [(f"{base}/", None), *[(f"{base}/{path}", None) for path in seo_pages]]
     # Only index public websites that contain enough real business information.
     # Drafts, empty shells, and explicitly opted-out sites stay out of Google.
@@ -1646,6 +1678,14 @@ async def sitemap(request: Request):
     for article in platform_articles:
         if article.get("slug"):
             pages.append((f"{base}/artikel/{article['slug']}", article.get("updatedAt")))
+    category_articles = await db.platform_articles.find({"status": "PUBLISHED", "category": {"$exists": True, "$ne": ""}}, {"_id": 0, "category": 1, "updatedAt": 1}).to_list(50000)
+    category_updates = {}
+    for article in category_articles:
+        category_slug = slugify(article.get("category", ""))
+        if category_slug:
+            category_updates[category_slug] = max(category_updates.get(category_slug, ""), article.get("updatedAt", ""))
+    for category_slug, updated in category_updates.items():
+        pages.append((f"{base}/artikel/kategori/{category_slug}", updated or None))
     urls = "".join(f"<url><loc>{escape(url)}</loc>{f'<lastmod>{escape(updated[:10])}</lastmod>' if updated else ''}</url>" for url, updated in pages)
     return Response(content=f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>', media_type="application/xml")
 
@@ -1667,6 +1707,19 @@ async def admin_generator_templates_update(data: GeneratorTemplateCatalogInput, 
     )
     await log_activity(admin["id"], "update_generator_templates", None, "generator-template-catalog", "Katalog template generator diperbarui")
     return {"ok": True, "catalog": catalog}
+
+@api.post("/admin/generator-templates/covers/replace-image")
+async def replace_generator_cover_image(data: dict, admin=Depends(admin_user)):
+    """Synchronize an admin-cropped template with generated website/article covers."""
+    old_url = str(data.get("oldUrl") or "").strip()
+    new_url = str(data.get("newUrl") or "").strip()
+    if not old_url or not new_url:
+        raise HTTPException(400, "URL cover lama dan baru wajib diisi")
+    websites = await db.websites.update_many({"coverImageUrl": old_url}, {"$set": {"coverImageUrl": new_url, "updatedAt": now()}})
+    articles = await db.articles.update_many({"coverImageUrl": old_url}, {"$set": {"coverImageUrl": new_url, "updatedAt": now()}})
+    await db.platform_articles.update_many({"coverImageUrl": old_url}, {"$set": {"coverImageUrl": new_url, "updatedAt": now()}})
+    await log_activity(admin["id"], "replace_generator_cover_image", None, "generator-template-catalog", "Cover template dicrop dan disinkronkan")
+    return {"updatedWebsites": websites.modified_count, "updatedArticles": articles.modified_count}
 
 # ========== Coupons, Demo Seed, Analytics ==========
 
@@ -2337,6 +2390,41 @@ async def startup():
             "websiteQuota": 999,
             "createdAt": now()
         })
+
+    # Legacy catalogue retained below only for upgrade-history context.  The
+    # current public learning centre is defined by PLATFORM_ARTICLES.
+    legacy_platform_article_seeds = [
+        ("Cara Membuat Website Usaha yang Profesional Tanpa Coding", "Panduan praktis membuat website usaha yang rapi, mudah dipercaya pelanggan, dan siap dibagikan.", "Mulai dari informasi paling penting: nama usaha, produk atau layanan, kontak, dan lokasi. Susun semuanya dengan bahasa yang singkat agar pengunjung segera memahami apa yang Anda tawarkan.\n\nPilih tampilan yang nyaman dibaca dari ponsel karena banyak pelanggan membuka website dari WhatsApp atau Google. Gunakan foto asli, harga yang jelas, serta tombol WhatsApp yang mudah ditemukan.\n\nSetelah terbit, bagikan tautan website pada profil Google Business, bio media sosial, katalog WhatsApp, dan kartu nama digital Anda."),
+        ("7 Halaman Penting untuk Website UMKM", "Kenali halaman yang membantu calon pelanggan menemukan informasi dan menghubungi usaha Anda dengan cepat.", "Website UMKM tidak harus rumit. Halaman beranda menjelaskan usaha Anda, sedangkan halaman produk atau layanan membantu pelanggan melihat pilihan yang tersedia.\n\nTambahkan halaman tentang usaha untuk membangun kepercayaan, kontak untuk memudahkan pertanyaan, dan lokasi bila pelanggan dapat datang langsung. Testimoni juga bermanfaat untuk memperkuat keyakinan sebelum membeli.\n\nPastikan setiap halaman memiliki ajakan yang jelas, misalnya melihat katalog atau menghubungi WhatsApp."),
+        ("Cara Menulis Deskripsi Produk yang Membuat Pelanggan Tertarik", "Gunakan deskripsi produk yang jelas, relevan, dan menjawab pertanyaan pelanggan sebelum mereka bertanya.", "Awali dengan nama produk yang spesifik dan manfaat utamanya. Hindari kalimat yang terlalu umum; jelaskan bahan, ukuran, varian, atau siapa yang paling cocok menggunakan produk tersebut.\n\nTulis harga secara terbuka jika memungkinkan. Pelanggan akan lebih mudah mengambil keputusan saat informasi penting tersedia di satu tempat.\n\nAkhiri dengan langkah berikutnya, misalnya ajakan untuk menghubungi WhatsApp, memesan, atau melihat varian lain."),
+        ("Strategi SEO Lokal agar Usaha Mudah Ditemukan di Google", "Langkah dasar SEO lokal untuk membantu usaha muncul saat calon pelanggan mencari produk atau layanan di sekitar mereka.", "SEO lokal dimulai dari informasi bisnis yang konsisten: nama, alamat, nomor telepon, jam operasional, dan kategori usaha. Gunakan informasi yang sama di website dan profil Google Business.\n\nBuat halaman yang menjelaskan layanan serta area yang Anda layani. Sertakan nama kota atau wilayah secara alami dalam judul dan isi, bukan dengan mengulang kata kunci berlebihan.\n\nPerbarui website secara berkala dengan produk baru, promo, dan artikel bermanfaat agar mesin pencari melihat bisnis Anda tetap aktif."),
+        ("Mengapa Website Penting untuk Bisnis di Era Digital", "Website memberi usaha Anda rumah digital yang dapat diakses pelanggan kapan saja tanpa bergantung pada satu platform media sosial.", "Media sosial bagus untuk menjangkau audiens, tetapi website adalah tempat yang Anda kendalikan sendiri. Di sana, pelanggan dapat melihat profil usaha, katalog, harga, dan cara menghubungi Anda dalam satu tautan.\n\nWebsite juga membuat usaha terlihat lebih siap dan profesional. Saat pelanggan mencari nama bisnis Anda di Google, mereka menemukan sumber informasi resmi yang mudah dibaca.\n\nGunakan website sebagai tujuan utama dari bio media sosial, iklan, dan pesan promosi."),
+        ("Tips Foto Produk untuk Katalog Online yang Lebih Menarik", "Foto produk yang terang dan konsisten membantu pelanggan memahami produk serta meningkatkan kepercayaan saat berbelanja online.", "Gunakan cahaya alami di dekat jendela atau pencahayaan yang lembut. Pastikan produk menjadi fokus utama dan latar belakang tidak terlalu ramai.\n\nAmbil beberapa sudut, termasuk detail ukuran, tekstur, atau isi kemasan. Untuk produk makanan, tampilkan porsi dan penyajian yang realistis.\n\nGunakan ukuran foto yang seragam di katalog agar website terlihat rapi dan profesional."),
+        ("Cara Menghubungkan Website Usaha dengan WhatsApp", "Permudah pelanggan bertanya dan memesan dengan tombol WhatsApp yang mengarah langsung ke percakapan bisnis Anda.", "Letakkan tombol WhatsApp di lokasi yang mudah terlihat, terutama pada halaman produk, layanan, dan kontak. Gunakan nomor bisnis yang aktif agar respons pelanggan tidak terlambat.\n\nAnda dapat menyiapkan pesan awal, misalnya pertanyaan tentang produk tertentu. Ini membantu pelanggan memulai percakapan dan memudahkan tim Anda memahami kebutuhan mereka.\n\nTetap tuliskan jam operasional supaya pelanggan mengetahui kapan dapat mengharapkan balasan."),
+        ("Panduan Memilih Nama Domain untuk Usaha", "Pilih nama domain yang singkat, mudah diingat, dan mencerminkan identitas usaha agar pelanggan mudah kembali ke website Anda.", "Pilih domain yang sedekat mungkin dengan nama bisnis. Hindari ejaan yang membingungkan, angka tidak perlu, atau tanda hubung berlebihan.\n\nJika usaha melayani pasar Indonesia, ekstensi .id atau .com dapat menjadi pilihan yang mudah dikenali. Periksa juga apakah nama tersebut mudah disebutkan saat pelanggan bertanya secara langsung.\n\nGunakan domain yang sama pada email bisnis dan tautan di media sosial untuk memperkuat identitas merek."),
+        ("Checklist Sebelum Mempublikasikan Website Usaha", "Periksa informasi penting ini sebelum membagikan website kepada pelanggan dan mulai menggunakannya untuk promosi.", "Cek kembali nama usaha, nomor WhatsApp, alamat, jam operasional, dan tautan media sosial. Pastikan semua tombol dapat diklik dan mengarah ke tujuan yang tepat.\n\nBaca isi halaman dari ponsel untuk memastikan teks nyaman dibaca dan foto tidak terlalu besar. Periksa juga harga, stok, serta deskripsi produk agar tidak ada informasi lama.\n\nTerakhir, bagikan website kepada beberapa orang terdekat dan minta mereka mencoba mencari informasi atau menghubungi Anda."),
+        ("Ide Konten Website untuk Menarik Pelanggan Baru", "Temukan ide artikel dan pembaruan sederhana yang membuat website usaha tetap berguna bagi pelanggan dan mesin pencari.", "Mulailah dari pertanyaan yang sering diajukan pelanggan, seperti cara memilih produk, panduan penggunaan, atau perbedaan antarvarian. Jawaban tersebut dapat menjadi artikel yang benar-benar membantu.\n\nAnda juga bisa menulis cerita di balik usaha, memperkenalkan produk baru, atau membagikan tips sesuai bidang bisnis. Konten yang spesifik lebih mudah menarik pembaca yang tepat.\n\nBuat jadwal pembaruan sederhana, misalnya satu artikel atau satu halaman promo setiap bulan, lalu bagikan ke media sosial dan WhatsApp."),
+    ]
+    admin = await db.users.find_one({"email": admin_email}, {"_id": 0, "id": 1})
+    catalog_version = "situska-editorial-2026-09-20"
+    platform_settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
+    if platform_settings.get("articleCatalogVersion") != catalog_version:
+        # This intentional, one-time migration is scoped strictly to the
+        # official Situska catalogue. Customer-created articles live in the
+        # separate `articles` collection and are never touched here.
+        await db.platform_articles.delete_many({})
+        published_at = now()
+        documents = [{
+            "id": uid(), "title": article["title"], "seoTitle": article["seoTitle"],
+            "slug": article["slug"], "category": article["category"],
+            "focusKeyword": article["focusKeyword"], "excerpt": article["excerpt"],
+            "content": article["content"], "coverImageUrl": article["coverImageUrl"],
+            "coverImageAlt": article["coverImageAlt"], "canonicalUrl": "", "status": "PUBLISHED",
+            "createdAt": published_at, "updatedAt": published_at, "publishedAt": published_at,
+            "authorId": (admin or {}).get("id", ""),
+        } for article in PLATFORM_ARTICLES]
+        await db.platform_articles.insert_many(documents)
+        await db.settings.update_one({"id": "platform"}, {"$set": {"articleCatalogVersion": catalog_version}}, upsert=True)
 
     platform_settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
     await ensure_showcase_sites(platform_settings.get("adminWhatsapp", DEFAULT_SETTINGS["adminWhatsapp"]))

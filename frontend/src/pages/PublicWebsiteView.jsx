@@ -27,10 +27,11 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { money, resolveMediaUrl } from "../lib/api";
+import { api, money, resolveMediaUrl } from "../lib/api";
 import { WebsiteTemplateLayout } from "./WebsiteTemplateLayouts";
 import { APP_NAME } from "../lib/config";
 import { getCoverVisualStyle } from "../lib/imageTemplates";
+import { getImageAlt } from "../lib/imageAlt";
 
 const ICON_MAP = {
   ShieldCheck: ShieldCheck,
@@ -80,6 +81,14 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
   const [showProductPopup, setShowProductPopup] = useState(false);
   const [currentProduct, setCurrentProduct] = useState(null);
   const [popupImageIdx, setPopupImageIdx] = useState(0);
+  const [articleCount, setArticleCount] = useState(0);
+
+  useEffect(() => {
+    if (!data.slug || embedded) return undefined;
+    let active = true;
+    api.get(`/public/${data.slug}/articles`).then((r) => { if (active) setArticleCount(r.data.length); }).catch(() => {});
+    return () => { active = false; };
+  }, [data.slug, embedded]);
 
   const cleanWa = (data.whatsapp || "").replace(/\D/g, "");
   const wa = cleanWa
@@ -197,6 +206,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       wa={wa}
       highlights={showHighlights ? highlights : []}
       testimonials={showTestimonials ? testimonials : []}
+      articleUrl={articleCount > 0 ? `/site/${data.slug}/artikel` : ""}
     />;
   }
 
@@ -209,7 +219,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       <header className="public-nav">
         <div className="public-brand">
           {logoUrl ? (
-            <img src={logoUrl} alt={data.businessName} />
+            <img src={logoUrl} alt={getImageAlt({ alt: data.logoAlt, context: "Logo", businessName: data.businessName })} />
           ) : (
             <span className="public-brand-initial">
               {(data.businessName || "U")[0].toUpperCase()}
@@ -230,6 +240,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
           {showTestimonials && <a href="#testimoni">Ulasan</a>}
           {showFaq && <a href="#faq">FAQ</a>}
           {showContact && anyContactCard && <a href="#lokasi">Kontak</a>}
+          {articleCount > 0 && <a href={`/site/${data.slug}/artikel`}>Artikel</a>}
         </nav>
 
         <a
@@ -723,6 +734,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
               {data.category || "Usaha"} terpercaya di {data.city || "Indonesia"}.
             </p>
           </div>
+          {articleCount > 0 && <a className="footer-article-link" href={`/site/${data.slug}/artikel`}>Baca artikel</a>}
           <div className="footer-credit">
             <span>Dibuat dengan <a href="/" target="_blank" rel="noreferrer">{APP_NAME}</a> • Platform Website AI UMKM Indonesia</span>
           </div>
@@ -745,7 +757,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
             {currentProduct.images && currentProduct.images.length > 0 ? (
               <img
                 src={currentProduct.images[popupImageIdx] || currentProduct.images[0]}
-                alt={currentProduct.name}
+                alt={getImageAlt({ alt: currentProduct.imageAlt, context: currentProduct.name, businessName: data.businessName })}
               />
             ) : (
               <div className="product-popup-image-placeholder">
@@ -765,7 +777,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
                   onClick={() => setPopupImageIdx(idx)}
                   aria-label={`Lihat foto ${idx + 1}`}
                 >
-                  <img src={img} alt={`${currentProduct.name} ${idx + 1}`} />
+                  <img src={img} alt="" />
                 </button>
               ))}
             </div>
