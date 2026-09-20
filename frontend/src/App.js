@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import "./App.css";
 import Landing from "./pages/Landing";
@@ -16,6 +16,7 @@ import { AdminArticles, AdminBuildzaArticles, PublicArticle, PublicArticleCatego
 import { SEO_PAGE_KEYS, SeoLandingPage } from "./pages/SeoPages";
 import { loadTemplateCatalog } from "./lib/generatorTemplateCatalog";
 import { NoIndex } from "./lib/seo";
+import { PUBLIC_SITE_DOMAIN } from "./lib/config";
 
 const TemplateCatalogBootstrap = ({ children }) => {
   const [, setVersion] = useState(0);
@@ -23,23 +24,53 @@ const TemplateCatalogBootstrap = ({ children }) => {
   return children;
 };
 
+// DNS/proxy points *.situska.com to this SPA.  Resolve the first hostname
+// label so a visitor at kopi-senja.situska.com sees that business directly.
+const HostedWebsite = () => {
+  const host = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
+  const suffix = `.${PUBLIC_SITE_DOMAIN}`;
+  const slug = host.endsWith(suffix) ? host.slice(0, -suffix.length) : "";
+  return slug && !slug.includes(".") && slug !== "www" ? <PublicRoute hostedSlug={slug} /> : <Landing />;
+};
+
+const hostedSlug = () => {
+  const host = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
+  const suffix = `.${PUBLIC_SITE_DOMAIN}`;
+  const slug = host.endsWith(suffix) ? host.slice(0, -suffix.length) : "";
+  return slug && !slug.includes(".") && slug !== "www" ? slug : "";
+};
+const HostedArticleIndex = () => {
+  const slug = hostedSlug();
+  return slug ? <PublicWebsiteArticles hostedSlug={slug} /> : <PublicBuildzaArticles />;
+};
+const HostedArticle = () => {
+  const slug = hostedSlug();
+  return slug ? <PublicArticle hostedSlug={slug} /> : <PublicBuildzaArticle />;
+};
+const LegacyPlatformArticle = () => {
+  const { articleSlug } = useParams();
+  return <Navigate replace to={`/${articleSlug}`} />;
+};
+
 export default function App() {
   return (
     <BrowserRouter>
       <TemplateCatalogBootstrap><Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<HostedWebsite />} />
         <Route path="/login" element={<><NoIndex /><AuthPage /></>} />
         <Route path="/register" element={<><NoIndex /><AuthPage register /></>} />
         <Route path="/forgot-password" element={<><NoIndex /><ForgotPassword /></>} />
         <Route path="/reset-password" element={<><NoIndex /><ResetPassword /></>} />
         <Route path="/verify-wa" element={<><NoIndex /><VerifyWA /></>} />
-        <Route path="/artikel" element={<PublicBuildzaArticles />} />
+        <Route path="/artikel" element={<HostedArticleIndex />} />
         <Route path="/artikel/kategori/:categorySlug" element={<PublicArticleCategory />} />
         <Route path="/artikel/:articleSlug" element={<PublicBuildzaArticle />} />
         {SEO_PAGE_KEYS.map((pageKey) => <Route key={pageKey} path={`/${pageKey}`} element={<SeoLandingPage pageKey={pageKey} />} />)}
         <Route path="/site/:slug/artikel/:articleSlug" element={<PublicArticle />} />
         <Route path="/site/:slug/artikel" element={<PublicWebsiteArticles />} />
         <Route path="/site/:slug" element={<PublicRoute />} />
+        <Route path="/artikel/:articleSlug" element={<LegacyPlatformArticle />} />
+        <Route path="/:articleSlug" element={<HostedArticle />} />
         <Route path="/owner-access/:slug" element={<><NoIndex /><OwnerAccess /></>} />
 
         <Route path="/dashboard" element={<UserShell><Dashboard /></UserShell>} />

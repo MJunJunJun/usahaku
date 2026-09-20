@@ -5,11 +5,12 @@ import { api } from "../lib/api";
 import { Brand, Loading, Button } from "../lib/shared";
 import PublicWebsiteView from "./PublicWebsiteView";
 import { getShowcaseSite } from "../lib/showcaseData";
-import { APP_NAME } from "../lib/config";
+import { APP_NAME, publicSiteUrl } from "../lib/config";
 import { SeoHead, originUrl } from "../lib/seo";
 
-export function PublicRoute() {
-  const { slug } = useParams();
+export function PublicRoute({ hostedSlug = "" }) {
+  const { slug: routeSlug } = useParams();
+  const slug = hostedSlug || routeSlug;
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -37,7 +38,7 @@ export function PublicRoute() {
   const city = data.city || "Indonesia";
   const description = data.description || `${data.businessName} adalah ${data.category} di ${city}. Lihat produk, informasi usaha, lokasi, jam buka, dan cara menghubungi kami.`;
   const image = data.coverImageUrl ? (data.coverImageUrl.startsWith("http") ? data.coverImageUrl : `${originUrl()}${data.coverImageUrl}`) : "";
-  const siteUrl = `${originUrl()}/site/${data.slug}`;
+  const siteUrl = publicSiteUrl(data.slug);
   const category = (data.category || "").toLowerCase();
   const businessType = category.includes("coffee") || category.includes("cafe") ? "CafeOrCoffeeShop" : category.includes("restaurant") ? "Restaurant" : category.includes("bakery") ? "Bakery" : category.includes("barber") ? "Barbershop" : category.includes("retail") || category.includes("toko") ? "Store" : category.includes("jasa") ? "ProfessionalService" : "LocalBusiness";
   const schema = {
@@ -46,7 +47,7 @@ export function PublicRoute() {
     address: data.address ? { "@type": "PostalAddress", streetAddress: data.address, addressLocality: data.city || undefined, addressRegion: data.province || undefined, addressCountry: "ID" } : undefined,
     sameAs: [data.instagram, data.facebook, data.tiktok].filter(Boolean),
   };
-  return <><SeoHead title={`${data.businessName} — ${data.category} di ${city}`} description={description} image={image} canonical={`/site/${data.slug}`} robots={data.seoNoIndex ? "noindex, nofollow" : "index, follow"} schema={schema} /><PublicWebsiteView data={data} /></>;
+  return <><SeoHead title={`${data.businessName} — ${data.category} di ${city}`} description={description} image={image} canonical={siteUrl} robots={data.seoNoIndex ? "noindex, nofollow" : "index, follow"} schema={schema} /><PublicWebsiteView data={data} /></>;
 }
 
 function MaintenancePage({ slug, businessName }) {
@@ -159,7 +160,7 @@ export function OwnerAccess() {
           <p>{data.website.businessName} sedang dalam pemeliharaan karena {status === "TRIAL_EXPIRED" ? "paket gratis tidak aktif" : "berlangganan telah berakhir"}. Aktifkan kembali untuk kembali online.</p>
           <div className="owner-status">
             <div><small>NAMA BISNIS</small><b>{data.website.businessName}</b></div>
-            <div><small>URL PUBLIK</small><b>/site/{data.website.slug}</b></div>
+            <div><small>URL PUBLIK</small><b>{publicSiteUrl(data.website.slug)}</b></div>
             <div><small>STATUS</small><b>{statusLabel}</b></div>
             <div><small>PAKET</small><b>{data.owner.planSlug === "trial" ? "Gratis" : (data.owner.planSlug || "Gratis")}</b></div>
           </div>

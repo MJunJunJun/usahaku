@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, ChevronRight, Menu, X, Sparkles } from "lucide-react";
 import { Brand } from "../lib/shared";
-import { APP_NAME, PUBLIC_SITE_HOST, SEO_ORIGIN } from "../lib/config";
+import { APP_NAME, SEO_ORIGIN, publicSiteHost, publicSiteUrl } from "../lib/config";
 import { SeoHead, originUrl } from "../lib/seo";
 import "./Landing.css";
 
@@ -45,16 +45,16 @@ const Price = ({ name, price, desc, items, featured, testid }) => (
 );
 
 const Example = ({ title, category, description, color, slug, testid }) => (
-  <Link data-testid={testid} className="example-card" to={`/site/${slug}`} style={{ background: color }}>
+  <a data-testid={testid} className="example-card" href={publicSiteUrl(slug)} style={{ background: color }}>
     <div className="example-header">
       <b>{title}</b>
-      <span>{PUBLIC_SITE_HOST}/site/{slug}</span>
+      <span>{publicSiteHost(slug)}</span>
     </div>
     <div className="example-body">
       <small>{category.toUpperCase()}</small>
       <h4>{description}</h4>
     </div>
-  </Link>
+  </a>
 );
 
 export default function Landing() {
@@ -85,7 +85,7 @@ export default function Landing() {
           </div>
           <div className="hero-visual reveal delay-1">
             <div className="browser">
-              <div className="browser-bar"><span /><span /><span /><small>{PUBLIC_SITE_HOST}/site/demo-kopi-senja</small></div>
+              <div className="browser-bar"><span /><span /><span /><small>{publicSiteHost("demo-kopi-senja")}</small></div>
               <div className="site-preview">
                 <div className="site-nav"><b>kopi<span>senja</span></b><span>Menu &nbsp; Tentang &nbsp; Lokasi</span><strong>Pesan sekarang</strong></div>
                 <div className="site-hero">

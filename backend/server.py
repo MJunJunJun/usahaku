@@ -77,6 +77,7 @@ def load_jwt_secret():
 
 JWT_SECRET = load_jwt_secret()
 COOKIE_DOMAIN = (os.environ.get("COOKIE_DOMAIN") or "").strip() or None
+PUBLIC_SITE_DOMAIN = (os.environ.get("PUBLIC_SITE_DOMAIN") or "situska.com").strip().lower().strip(".")
 COOKIE_SAMESITE = (os.environ.get("COOKIE_SAMESITE") or "lax").strip().lower()
 if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
     COOKIE_SAMESITE = "lax"
@@ -707,12 +708,12 @@ async def delete_article(article_id: str, user=Depends(current_user)):
 async def check_store_address(slug: str, siteId: str = "", user=Depends(current_user)):
     normalized = slugify(slug)
     if not slug.strip():
-        return {"slug": "", "available": False}
+        return {"slug": "", "available": False, "domain": ""}
     query = {"$or": [{"slug": normalized}, {"storeSlug": normalized}]}
     if siteId:
         query["id"] = {"$ne": siteId}
     duplicate = await db.websites.find_one(query, {"_id": 0, "id": 1})
-    return {"slug": normalized, "available": not bool(duplicate)}
+    return {"slug": normalized, "available": not bool(duplicate), "domain": f"{normalized}.{PUBLIC_SITE_DOMAIN}"}
 
 @api.put("/websites/{site_id}")
 async def update_website(site_id: str, data: WebsiteInput, user=Depends(current_user)):
@@ -1492,16 +1493,16 @@ async def public_buildza_article(article_slug: str):
     article = await db.platform_articles.find_one({"slug": article_slug, "status": "PUBLISHED"}, {"_id": 0})
     if not article:
         article = await db.platform_articles.find_one({"oldSlugs": article_slug, "status": "PUBLISHED"}, {"_id": 0})
-        if article: return {**article, "redirectTo": f"/artikel/{article['slug']}"}
+        if article: return {**article, "redirectTo": f"/{article['slug']}"}
         raise HTTPException(404, "Artikel tidak ditemukan")
     return article
 
 @app.get("/artikel/{article_slug}", include_in_schema=False)
 async def legacy_article_redirect(article_slug: str):
-    """Serve a real HTTP 301 for historical public article URLs via nginx."""
-    article = await db.platform_articles.find_one({"oldSlugs": article_slug, "status": "PUBLISHED"}, {"_id": 0, "slug": 1})
+    """Redirect the historical /artikel/ URL to the root-level canonical URL."""
+    article = await db.platform_articles.find_one({"$or": [{"slug": article_slug}, {"oldSlugs": article_slug}], "status": "PUBLISHED"}, {"_id": 0, "slug": 1})
     if not article: raise HTTPException(404, "Artikel tidak ditemukan")
-    return RedirectResponse(url=f"/artikel/{article['slug']}", status_code=301)
+    return RedirectResponse(url=f"/{article['slug']}", status_code=301)
 
 @api.get("/admin/payments")
 async def admin_payments(_=Depends(admin_user)):
@@ -1667,17 +1668,17 @@ async def sitemap(request: Request):
     sites = await db.websites.find(indexable_query, {"_id": 0, "id": 1, "slug": 1, "updatedAt": 1}).to_list(50000)
     for site in sites:
         if site.get("slug"):
-            pages.append((f"{base}/site/{site['slug']}", site.get("updatedAt")))
+            pages.append((f"https://{site['slug']}.{PUBLIC_SITE_DOMAIN}", site.get("updatedAt")))
     site_slugs = {site.get("id"): site.get("slug") for site in sites}
     articles = await db.articles.find({"status": "PUBLISHED"}, {"_id": 0, "websiteId": 1, "slug": 1, "updatedAt": 1}).to_list(50000)
     for article in articles:
         website_slug = site_slugs.get(article.get("websiteId"))
         if website_slug and article.get("slug"):
-            pages.append((f"{base}/site/{website_slug}/artikel/{article['slug']}", article.get("updatedAt")))
+            pages.append((f"https://{website_slug}.{PUBLIC_SITE_DOMAIN}/{article['slug']}", article.get("updatedAt")))
     platform_articles = await db.platform_articles.find({"status": "PUBLISHED"}, {"_id": 0, "slug": 1, "updatedAt": 1}).to_list(50000)
     for article in platform_articles:
         if article.get("slug"):
-            pages.append((f"{base}/artikel/{article['slug']}", article.get("updatedAt")))
+            pages.append((f"{base}/{article['slug']}", article.get("updatedAt")))
     category_articles = await db.platform_articles.find({"status": "PUBLISHED", "category": {"$exists": True, "$ne": ""}}, {"_id": 0, "category": 1, "updatedAt": 1}).to_list(50000)
     category_updates = {}
     for article in category_articles:

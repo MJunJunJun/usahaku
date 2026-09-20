@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { api, money, resolveMediaUrl } from "../lib/api";
 import { WebsiteTemplateLayout } from "./WebsiteTemplateLayouts";
-import { APP_NAME } from "../lib/config";
+import { APP_NAME, PUBLIC_SITE_DOMAIN, publicSiteUrl } from "../lib/config";
 import { getCoverVisualStyle } from "../lib/imageTemplates";
 import { getImageAlt } from "../lib/imageAlt";
 
@@ -70,6 +70,9 @@ const getCategoryCover = (category, name) => {
 };
 
 export default function PublicWebsiteView({ data, embedded = false, device = "desktop" }) {
+  const host = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
+  const isHostedSite = !embedded && host === `${data.slug}.${PUBLIC_SITE_DOMAIN}`;
+  const articlesUrl = isHostedSite ? `${publicSiteUrl(data.slug)}/artikel` : `/site/${data.slug}/artikel`;
   const c = data.aiGeneratedContent || {};
   const primary = data.themeConfig?.primary || c.primaryColor || "#0077B6";
   const accent = data.themeConfig?.accent || c.accentColor || "#03045E";
@@ -206,7 +209,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       wa={wa}
       highlights={showHighlights ? highlights : []}
       testimonials={showTestimonials ? testimonials : []}
-      articleUrl={articleCount > 0 ? `/site/${data.slug}/artikel` : ""}
+      articleUrl={articleCount > 0 ? articlesUrl : ""}
     />;
   }
 
@@ -240,7 +243,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
           {showTestimonials && <a href="#testimoni">Ulasan</a>}
           {showFaq && <a href="#faq">FAQ</a>}
           {showContact && anyContactCard && <a href="#lokasi">Kontak</a>}
-          {articleCount > 0 && <a href={`/site/${data.slug}/artikel`}>Artikel</a>}
+          {articleCount > 0 && <a href={articlesUrl}>Artikel</a>}
         </nav>
 
         <a
@@ -734,7 +737,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
               {data.category || "Usaha"} terpercaya di {data.city || "Indonesia"}.
             </p>
           </div>
-          {articleCount > 0 && <a className="footer-article-link" href={`/site/${data.slug}/artikel`}>Baca artikel</a>}
+          {articleCount > 0 && <a className="footer-article-link" href={articlesUrl}>Baca artikel</a>}
           <div className="footer-credit">
             <span>Dibuat dengan <a href="/" target="_blank" rel="noreferrer">{APP_NAME}</a> • Platform Website AI UMKM Indonesia</span>
           </div>

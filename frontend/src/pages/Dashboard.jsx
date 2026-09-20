@@ -6,7 +6,7 @@ import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
 import PublicWebsiteView from "./PublicWebsiteView";
 import { SectionForm, makeRandomSections } from "./Sections";
-import { APP_NAME } from "../lib/config";
+import { APP_NAME, publicSiteHost, publicSiteUrl } from "../lib/config";
 import { coverPatchFromTemplate, getContentTemplates, pickRandomContentTemplate } from "../lib/contentTemplates";
 import { getCoverTemplates, getLogoTemplates, pickRandomImageTemplates } from "../lib/imageTemplates";
 
@@ -200,12 +200,33 @@ export function CreateWebsite() {
   };
 
   const checkStoreSlug = async () => {
-    if (!form.storeSlug.trim()) { setSlugState(""); return; }
+    if (!form.storeSlug.trim()) { setSlugState(""); return false; }
+    setSlugState("Memeriksa ketersediaan alamat web...");
     try {
       const r = await api.get(`/store-address/check?slug=${encodeURIComponent(form.storeSlug)}`);
-      setSlugState(r.data.available ? `✓ Alamat tersedia: /site/${r.data.slug}` : "Alamat toko ini sudah digunakan");
-    } catch (_) { setSlugState("Tidak dapat memeriksa alamat toko"); }
+      setSlugState(r.data.available ? `✓ Alamat tersedia: ${publicSiteHost(r.data.slug)}` : "Alamat toko ini sudah digunakan");
+      return r.data.available;
+    } catch (_) { setSlugState("Tidak dapat memeriksa alamat toko"); return false; }
   };
+
+  // Check while the user types too, so the result is visible before they leave
+  // the first generator step. The click on "Lanjut" repeats the check as the
+  // final guard against a race with another user claiming the same address.
+  useEffect(() => {
+    const value = form.storeSlug.trim();
+    if (!value) return undefined;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setSlugState("Memeriksa ketersediaan alamat web...");
+      try {
+        const r = await api.get(`/store-address/check?slug=${encodeURIComponent(value)}`);
+        if (active) setSlugState(r.data.available ? `✓ Alamat tersedia: ${publicSiteHost(r.data.slug)}` : "Alamat toko ini sudah digunakan");
+      } catch (_) {
+        if (active) setSlugState("Tidak dapat memeriksa alamat toko");
+      }
+    }, 450);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [form.storeSlug]);
 
   const changeLogoColor = (color) => {
     setLogoColor(color);
@@ -328,7 +349,7 @@ export function CreateWebsite() {
           <label>Jenis usaha<select data-testid="business-category-select" value={form.category} onChange={e => changeCategory(e.target.value)}>{CATEGORIES.map(x => <option key={x}>{x}</option>)}</select></label>
           <label className="full">Alamat toko
             <input data-testid="store-address-input" value={form.storeSlug} onChange={e => { setSlugTouched(true); set("storeSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-")); setSlugState(""); }} onBlur={checkStoreSlug} placeholder="contoh: kopi-senja" required />
-            <small className={slugState.startsWith("✓") ? "text-sky-600" : slugState ? "text-red-600" : ""}>Alamat ini menjadi link toko kamu. Harus unik dan tidak dapat diubah setelah website Gratis dipublikasikan. {slugState}</small>
+            <small className={slugState.startsWith("✓") ? "text-sky-600" : slugState.startsWith("Memeriksa") ? "text-slate-500" : slugState ? "text-red-600" : ""}>Alamat ini menjadi <b>{form.storeSlug ? publicSiteHost(form.storeSlug) : "namausaha.situska.com"}</b>. Harus unik dan tidak dapat diubah setelah website Gratis dipublikasikan. {slugState}</small>
           </label>
               <div className="full compact-template-field">
                 <div className="field-heading-row">
@@ -520,7 +541,7 @@ export function CreateWebsite() {
         <div className="wizard-actions">
           {step > 1 && <Button data-testid="wizard-previous-button" variant="outline" onClick={() => setStep(step - 1)}>Kembali</Button>}
           {step < 4 ? (
-            <Button data-testid="wizard-next-button" onClick={() => { if (step === 1 && (!form.businessName || !form.storeSlug)) { setErr("Nama usaha dan alamat toko wajib diisi"); return; } if (step === 1 && slugState.includes("sudah digunakan")) { setErr("Silakan gunakan alamat toko yang berbeda"); return; } setErr(""); setStep(step + 1); }}>
+            <Button data-testid="wizard-next-button" onClick={async () => { if (step === 1 && (!form.businessName || !form.storeSlug)) { setErr("Nama usaha dan alamat toko wajib diisi"); return; } if (step === 1 && !await checkStoreSlug()) { setErr("Silakan gunakan alamat toko yang tersedia sebelum melanjutkan"); return; } setErr(""); setStep(step + 1); }}>
               Lanjut <ArrowRight size={16} />
             </Button>
           ) : (
@@ -560,7 +581,7 @@ export function WebsiteDetail() {
     finally { setBusy(false); }
   };
   const publish = async () => {
-    try { const r = await api.post(`/websites/${id}/publish`); nav(`/site/${r.data.slug}`); } catch (e) { alert(errorText(e)); }
+    try { const r = await api.post(`/websites/${id}/publish`); window.location.assign(publicSiteUrl(r.data.slug)); } catch (e) { alert(errorText(e)); }
   };
   const removeSite = async () => {
     if (!window.confirm(`Hapus website ${w.businessName}? Tindakan ini tidak bisa dibatalkan.`)) return;
@@ -601,7 +622,7 @@ export function WebsiteDetail() {
               <button data-testid="mobile-preview-button" className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")}>Mobile</button>
             </div>
             {w.status === "PUBLISHED" && w.slug && (
-              <a data-testid="open-public-link" href={`/site/${w.slug}`} target="_blank" rel="noreferrer" className="text-link">Buka publik <ExternalLink size={14} /></a>
+              <a data-testid="open-public-link" href={publicSiteUrl(w.slug)} target="_blank" rel="noreferrer" className="text-link">Buka {publicSiteHost(w.slug)} <ExternalLink size={14} /></a>
             )}
           </div>
           <div className={`device-frame device-${device}`}>
