@@ -72,7 +72,7 @@ const getCategoryCover = (category, name) => {
 export default function PublicWebsiteView({ data, embedded = false, device = "desktop" }) {
   const host = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
   const isHostedSite = !embedded && host === `${data.slug}.${PUBLIC_SITE_DOMAIN}`;
-  const articlesUrl = isHostedSite ? `${publicSiteUrl(data.slug)}/artikel` : `/site/${data.slug}/artikel`;
+  const articlesUrl = `${publicSiteUrl(data.slug)}/artikel`;
   const c = data.aiGeneratedContent || {};
   const primary = data.themeConfig?.primary || c.primaryColor || "#0077B6";
   const accent = data.themeConfig?.accent || c.accentColor || "#03045E";

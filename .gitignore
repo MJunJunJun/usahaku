@@ -101,3 +101,4 @@ frontend/public/assets/templates/covers/*/*.png
 patch_docker_compose.py
 nginx.conf
 !backend/.env.example
+!.env.example

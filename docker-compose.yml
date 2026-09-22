@@ -8,11 +8,6 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
-    # Database stays on the private Docker network. Do not publish MongoDB to
-    # the host or public internet.
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
     volumes:
       - mongo_data:/data/db
 
@@ -24,27 +19,27 @@ services:
       - mongo
       - redis
     environment:
-      MONGO_URL: ${MONGO_URL:?Set MONGO_URL (with URL-encoded credentials) in .env}
+      MONGO_URL: ${MONGO_URL}
       DB_NAME: usahaku
-      JWT_SECRET: ${JWT_SECRET:?Set a high-entropy JWT_SECRET in .env}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      APP_NAME: ${APP_NAME:-Situska}
-      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-hello@buildza.id}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@usahaku.id}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      APP_NAME: Situska
+      SUPPORT_EMAIL: hello@usahaku.id
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-.situska.com}
+      COOKIE_SAMESITE: lax
+      COOKIE_SECURE: "true"
+      CORS_ORIGIN_REGEX: ^https?://(.*\.)?situska\.com$
       RATE_LIMIT_REDIS_URL: redis://redis:6379/0
       REQUIRE_DISTRIBUTED_RATE_LIMIT: "true"
       REQUIRE_ADMIN_MFA: "true"
-      ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET:?Set ADMIN_TOTP_SECRET for administrator MFA in .env}
-      GOWA_BASE_URL: http://gowa:3000
-      GOWA_USER: ${GOWA_USER:?Set GOWA_USER in .env}
-      GOWA_PASS: ${GOWA_PASS:?Set GOWA_PASS in .env}
-      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:?Set WHATSAPP_WEBHOOK_SECRET in .env}
-    expose:
-      - "8000"
+      ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET}
+      GOWA_BASE_URL: http://usahaku-gowa:3000
+      GOWA_USER: admin
+      GOWA_PASS: ${GOWA_PASS}
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/.runtime:/app/.runtime
@@ -54,8 +49,8 @@ services:
       context: ./frontend
       args:
         REACT_APP_BACKEND_URL: ""
-        REACT_APP_BRAND_NAME: ${APP_NAME:-Situska}
-        REACT_APP_PUBLIC_SITE_HOST: ${PUBLIC_SITE_HOST:-}
+        REACT_APP_BRAND_NAME: Situska
+        REACT_APP_PUBLIC_SITE_HOST: situska.com
     restart: unless-stopped
     depends_on:
       - backend
@@ -63,10 +58,8 @@ services:
       REACT_APP_BACKEND_URL: ""
       HOST: 0.0.0.0
       CHOKIDAR_USEPOLLING: "true"
-    # Let a TLS-terminating reverse proxy reach the app locally; do not expose
-    # the HTTP origin directly to the public network.
     ports:
-      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:3000:3000"
+      - "0.0.0.0:3000:3000"
 
   gowa:
     image: aldinokemal2104/go-whatsapp-web-multidevice:latest
@@ -80,20 +73,18 @@ services:
       - ./gowa-data:/app/storages
     command:
       - "rest"
-      - "--basic-auth=${GOWA_USER:?Set GOWA_USER in .env}:${GOWA_PASS:?Set GOWA_PASS in .env}"
+      - "--basic-auth=${GOWA_USER}:${GOWA_PASS}"
       - "--webhook=http://backend:8000/api/wa/webhook"
       - "--os=Situska"
       - "--account-validation=false"
       - "--autoreply=false"
-      # The GoWA dashboard and MCP endpoint are not part of the product's
-      # public surface. Admin QR access is mediated by the backend API.
       - "--ui-enabled=false"
       - "--mcp-enabled=false"
-      - "--webhook-secret=${WHATSAPP_WEBHOOK_SECRET:?Set WHATSAPP_WEBHOOK_SECRET in .env}"
+      - "--webhook-secret=${WHATSAPP_WEBHOOK_SECRET}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Search, Check, X, Users, CreditCard, Store, ClipboardList, Sparkles, Plus, Trash2, LayoutTemplate, Upload, Image as ImageIcon } from "lucide-react";
 import { api, errorText, money, formatDate, formatDateTime, resolveMediaUrl, uploadFile } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
-import { APP_NAME } from "../lib/config";
+import { APP_NAME, publicSiteUrl } from "../lib/config";
 import { TEMPLATE_CATEGORIES } from "../lib/contentTemplates";
 import { LOGO_STYLE_OPTIONS } from "../lib/imageTemplates";
 import { applyTemplateCatalog, makeDefaultTemplateCatalog } from "../lib/generatorTemplateCatalog";
@@ -529,7 +529,7 @@ export function AdminWebsites() {
             <span>{w.category}</span>
             <span>{w.productCount || 0}</span>
             <span><StatusBadge status={w.status} /></span>
-            <span>{w.slug ? <a target="_blank" rel="noreferrer" href={`/site/${w.slug}`}>/site/{w.slug}</a> : "-"}</span>
+            <span>{w.slug ? <a target="_blank" rel="noreferrer" href={publicSiteUrl(w.slug)}>{w.slug}.situska.com</a> : "-"}</span>
           </div>
         ))}
       </div>
