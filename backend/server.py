@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlparse
 import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio, hashlib, time
 from collections import defaultdict, deque
 import hmac as _hmac
@@ -1814,10 +1815,35 @@ async def generator_templates_get():
 
 @api.get("/sitemap.xml")
 async def sitemap(request: Request):
-    """Domain-aware sitemap for the platform and every public generated site."""
+    """Sitemap pusat Situska atau sitemap khusus satu subdomain usaha."""
     from xml.sax.saxutils import escape
     configured = (os.environ.get("PUBLIC_APP_URL") or "https://situska.com").strip().rstrip("/")
     base = configured
+    request_host = (request.headers.get("host") or "").split(":", 1)[0].lower().strip(".")
+    subdomain_suffix = f".{PUBLIC_SITE_DOMAIN}"
+    hosted_slug = request_host[:-len(subdomain_suffix)] if request_host.endswith(subdomain_suffix) else ""
+    is_hosted_site = bool(hosted_slug and "." not in hosted_slug and hosted_slug != "www")
+
+    if is_hosted_site:
+        # robots.txt pada tiap subdomain menunjuk sitemap ini. Jangan mencampur URL
+        # bisnis lain agar pemilik dan crawler mendapat daftar canonical yang fokus.
+        site = await db.websites.find_one({
+            "slug": hosted_slug, "status": "PUBLISHED", "seoNoIndex": {"$ne": True},
+            "businessName": {"$exists": True, "$ne": ""},
+            "$or": [{"description": {"$exists": True, "$ne": ""}}, {"aiGeneratedContent.heroTitle": {"$exists": True, "$ne": ""}}],
+        }, {"_id": 0, "id": 1, "updatedAt": 1})
+        pages = []
+        if site:
+            site_base = f"https://{request_host}"
+            pages = [(site_base, site.get("updatedAt")), (f"{site_base}/artikel", site.get("updatedAt"))]
+            articles = await db.articles.find(
+                {"websiteId": site["id"], "status": "PUBLISHED", "slug": {"$exists": True, "$ne": ""}},
+                {"_id": 0, "slug": 1, "updatedAt": 1},
+            ).to_list(50000)
+            pages.extend((f"{site_base}/artikel/{article['slug']}", article.get("updatedAt")) for article in articles)
+        urls = "".join(f"<url><loc>{escape(url)}</loc>{f'<lastmod>{escape(updated[:10])}</lastmod>' if updated else ''}</url>" for url, updated in pages)
+        return Response(content=f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>', media_type="application/xml")
+
     seo_pages = ["website-toko-online", "website-cafe", "website-restoran", "website-bengkel", "website-barbershop", "website-bakery", "website-jasa", "artikel"]
     pages = [(f"{base}/", None), *[(f"{base}/{path}", None) for path in seo_pages]]
     # Only index public websites that contain enough real business information.
@@ -2458,6 +2484,19 @@ app.include_router(api)
 @app.get("/sitemap.xml")
 async def sitemap_at_root(request: Request):
     return await sitemap(request)
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_at_root(request: Request):
+    """Berikan sitemap canonical yang sesuai untuk situs pusat atau subdomain usaha."""
+    request_host = (request.headers.get("host") or "").split(":", 1)[0].lower().strip(".")
+    suffix = f".{PUBLIC_SITE_DOMAIN}"
+    is_hosted_site = request_host.endswith(suffix) and request_host[:-len(suffix)] not in {"", "www"} and "." not in request_host[:-len(suffix)]
+    sitemap_host = request_host if is_hosted_site else (urlparse(os.environ.get("PUBLIC_APP_URL") or "https://situska.com").netloc or PUBLIC_SITE_DOMAIN)
+    content = "\n".join([
+        "User-agent: *", "Allow: /", "Disallow: /admin/", "Disallow: /dashboard/",
+        "Disallow: /login", "Disallow: /register", f"Sitemap: https://{sitemap_host}/sitemap.xml", "",
+    ])
+    return Response(content=content, media_type="text/plain")
 cors_origins = [origin.strip().rstrip("/") for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin.strip()]
 cors_origin_regex = (os.environ.get("CORS_ORIGIN_REGEX") or r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$").strip() or None
 app.add_middleware(
