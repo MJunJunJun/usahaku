@@ -41,10 +41,13 @@ export function PublicRoute({ hostedSlug = "" }) {
   const siteUrl = publicSiteUrl(data.slug);
   const category = (data.category || "").toLowerCase();
   const businessType = category.includes("coffee") || category.includes("cafe") ? "CafeOrCoffeeShop" : category.includes("restaurant") ? "Restaurant" : category.includes("bakery") ? "Bakery" : category.includes("barber") ? "Barbershop" : category.includes("retail") || category.includes("toko") ? "Store" : category.includes("jasa") ? "ProfessionalService" : "LocalBusiness";
+  const hasCoordinates = Number.isFinite(data.latitude) && Number.isFinite(data.longitude);
   const schema = {
     "@context": "https://schema.org", "@type": businessType, name: data.businessName,
-    description, url: siteUrl, image, telephone: data.phone || data.whatsapp || undefined,
-    address: data.address ? { "@type": "PostalAddress", streetAddress: data.address, addressLocality: data.city || undefined, addressRegion: data.province || undefined, addressCountry: "ID" } : undefined,
+    description, url: siteUrl, image, telephone: data.phone || data.whatsapp || undefined, email: data.email || undefined,
+    address: data.address ? { "@type": "PostalAddress", streetAddress: data.address, addressLocality: data.city || undefined, addressRegion: data.province || undefined, postalCode: data.postalCode || undefined, addressCountry: "ID" } : undefined,
+    geo: hasCoordinates ? { "@type": "GeoCoordinates", latitude: data.latitude, longitude: data.longitude } : undefined,
+    hasMap: data.mapsUrl || undefined,
     sameAs: [data.instagram, data.facebook, data.tiktok].filter(Boolean),
   };
   return <><SeoHead title={`${data.businessName} — ${data.category} di ${city}`} description={description} image={image} canonical={siteUrl} robots={data.seoNoIndex ? "noindex, nofollow" : "index, follow"} schema={schema} /><PublicWebsiteView data={data} /></>;

@@ -1832,7 +1832,9 @@ async def sitemap(request: Request):
     for article in articles:
         website_slug = site_slugs.get(article.get("websiteId"))
         if website_slug and article.get("slug"):
-            pages.append((f"https://{website_slug}.{PUBLIC_SITE_DOMAIN}/{article['slug']}", article.get("updatedAt")))
+            # Artikel customer memakai rute /artikel/{slug}; URL root dipakai oleh
+            # artikel platform Situska. Sitemap harus mengikuti canonical publiknya.
+            pages.append((f"https://{website_slug}.{PUBLIC_SITE_DOMAIN}/artikel/{article['slug']}", article.get("updatedAt")))
     platform_articles = await db.platform_articles.find({"status": "PUBLISHED"}, {"_id": 0, "slug": 1, "updatedAt": 1}).to_list(50000)
     for article in platform_articles:
         if article.get("slug"):
