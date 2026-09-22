@@ -4,6 +4,7 @@ import { ArrowRight, AlertCircle, CheckCircle, Loader2, Eye, EyeOff } from "luci
 import { api, errorText } from "../lib/api";
 import { Brand, Button, FormError } from "../lib/shared";
 import { APP_NAME } from "../lib/config";
+import { Turnstile, turnstileEnabled } from "../components/Turnstile";
 import "./Auth.css";
 
 function AuthSide() {
@@ -33,6 +34,7 @@ export function AuthPage({ register = false }) {
   const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   // ===== CEK SESSION: kalau sudah login, arahkan langsung =====
   useEffect(() => {
@@ -67,6 +69,7 @@ export function AuthPage({ register = false }) {
 
     setBusy(true);
     try {
+      if (turnstileEnabled() && !turnstileToken) throw new Error("Selesaikan verifikasi keamanan terlebih dahulu.");
       if (register) {
         const pendingRegistration = {
           name: form.name.trim(),
@@ -75,11 +78,11 @@ export function AuthPage({ register = false }) {
           whatsapp: form.whatsapp.trim(),
           createdAt: new Date().toISOString(),
         };
-        await api.post("/auth/send-wa-code", { phone: pendingRegistration.whatsapp, name: pendingRegistration.name });
+        await api.post("/auth/send-wa-code", { phone: pendingRegistration.whatsapp, name: pendingRegistration.name, turnstileToken });
         sessionStorage.setItem("pendingRegistration", JSON.stringify(pendingRegistration));
         nav("/verify-wa");
       } else {
-        const r = await api.post("/auth/login", { email: form.email, password: form.password });
+        const r = await api.post("/auth/login", { email: form.email, password: form.password, turnstileToken });
         const role = r?.data?.role || "";
         nav(role === "ADMIN" ? "/admin" : "/dashboard");
       }
@@ -145,6 +148,8 @@ export function AuthPage({ register = false }) {
                 </label>
               </>
             )}
+
+            <Turnstile onVerify={setTurnstileToken} />
             
             <label>
               Email
@@ -242,6 +247,7 @@ export function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
   
   const submit = async (e) => {
     e.preventDefault();
@@ -252,7 +258,8 @@ export function ForgotPassword() {
     }
     setBusy(true);
     try {
-      const r = await api.post("/auth/forgot-password", { email });
+      if (turnstileEnabled() && !turnstileToken) throw new Error("Selesaikan verifikasi keamanan terlebih dahulu.");
+      const r = await api.post("/auth/forgot-password", { email, turnstileToken });
       setMsg(r.data?.message || "Jika email terdaftar, instruksi reset sudah dibuat.");
     } catch (ex) {
       setMsg(errorText(ex));
@@ -275,6 +282,7 @@ export function ForgotPassword() {
               Email
               <input data-testid="forgot-email-input" required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nama@email.com" autoComplete="email" disabled={busy} />
             </label>
+            <Turnstile onVerify={setTurnstileToken} />
             {msg && <div data-testid="forgot-message" className={msg.includes("berhasil") || msg.includes("instruksi") ? "form-info" : "form-error"}>{msg}</div>}
             <Button data-testid="forgot-submit-button" type="submit" disabled={busy}>{busy ? <><Loader2 size={16} className="spin" /> Mengirim...</> : "Kirim tautan reset"} <ArrowRight size={16} /></Button>
           </form>

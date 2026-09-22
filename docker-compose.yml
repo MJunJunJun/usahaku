@@ -22,6 +22,7 @@ services:
       MONGO_URL: ${MONGO_URL}
       DB_NAME: usahaku
       JWT_SECRET: ${JWT_SECRET}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@usahaku.id}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       APP_NAME: Situska
@@ -51,6 +52,7 @@ services:
         REACT_APP_BACKEND_URL: ""
         REACT_APP_BRAND_NAME: Situska
         REACT_APP_PUBLIC_SITE_HOST: situska.com
+        REACT_APP_TURNSTILE_SITE_KEY: ${REACT_APP_TURNSTILE_SITE_KEY:-}
     restart: unless-stopped
     depends_on:
       - backend

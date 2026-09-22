@@ -70,6 +70,7 @@ REQUIRE_DISTRIBUTED_RATE_LIMIT = (os.environ.get("REQUIRE_DISTRIBUTED_RATE_LIMIT
 ADMIN_TOTP_SECRET = (os.environ.get("ADMIN_TOTP_SECRET") or "").strip()
 REQUIRE_ADMIN_MFA = (os.environ.get("REQUIRE_ADMIN_MFA") or "false").lower() == "true"
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+TURNSTILE_SECRET_KEY = (os.environ.get("TURNSTILE_SECRET_KEY") or "").strip()
 
 def load_jwt_secret():
     """Use the configured secret, or persist a local-development secret.
@@ -215,6 +216,24 @@ def request_client_key(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
     return forwarded or (request.client.host if request.client else "unknown")
 
+def verify_turnstile(request: Request, token: str):
+    """Validate a single-use Turnstile token when the feature is configured."""
+    if not TURNSTILE_SECRET_KEY:
+        return
+    token = (token or "").strip()
+    if not token:
+        raise HTTPException(400, "Verifikasi keamanan diperlukan. Silakan coba lagi.")
+    try:
+        result = requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            json={"secret": TURNSTILE_SECRET_KEY, "response": token, "remoteip": request_client_key(request)},
+            timeout=5,
+        ).json()
+    except (requests.RequestException, ValueError):
+        raise HTTPException(503, "Verifikasi keamanan sedang tidak tersedia. Coba lagi nanti.")
+    if not result.get("success"):
+        raise HTTPException(400, "Verifikasi keamanan gagal atau kedaluwarsa. Silakan coba lagi.")
+
 async def enforce_rate_limit(request: Request, scope: str, subject: str, limit: int, window_seconds: int):
     """Use Redis in production; the in-memory fallback is development only."""
     global _redis_rate_client
@@ -308,6 +327,7 @@ class AuthInput(BaseModel):
     email: EmailStr
     password: str
     mfaCode: str = ""
+    turnstileToken: str = ""
 
 class RegisterInput(AuthInput):
     name: str
@@ -317,6 +337,7 @@ class RegisterInput(AuthInput):
 class WaSendInput(BaseModel):
     phone: str
     name: Optional[str] = None
+    turnstileToken: str = ""
 
 class WaVerifyInput(BaseModel):
     phone: str
@@ -473,6 +494,7 @@ class ResetInput(BaseModel):
 
 class ForgotInput(BaseModel):
     email: EmailStr
+    turnstileToken: str = ""
 
 _upload_setting = Path(os.environ.get("UPLOAD_DIR", "uploads"))
 UPLOAD_DIR = (_upload_setting if _upload_setting.is_absolute() else ROOT_DIR / _upload_setting).resolve()
@@ -629,6 +651,7 @@ async def register(data: RegisterInput, response: Response, request: Request):
 
 @api.post("/auth/send-wa-code")
 async def send_wa_code(data: WaSendInput, request: Request):
+    verify_turnstile(request, data.turnstileToken)
     phone = wa_service.normalize_number(data.phone)
     if not phone:
         raise HTTPException(400, "Nomor WhatsApp tidak valid")
@@ -669,6 +692,7 @@ async def verify_wa(data: WaVerifyInput, request: Request):
 
 @api.post("/auth/login")
 async def login(data: AuthInput, response: Response, request: Request):
+    verify_turnstile(request, data.turnstileToken)
     await enforce_rate_limit(request, "login", data.email, limit=5, window_seconds=900)
     user = await db.users.find_one({"email": data.email.lower().strip()})
     if not user or not verify_password(data.password, user.get("password_hash", "")):
@@ -701,6 +725,7 @@ async def me(user=Depends(current_user)):
 
 @api.post("/auth/forgot-password")
 async def forgot(data: ForgotInput, request: Request):
+    verify_turnstile(request, data.turnstileToken)
     await enforce_rate_limit(request, "forgot-password", data.email, limit=3, window_seconds=900)
     user = await db.users.find_one({"email": data.email.lower().strip()})
     if user:

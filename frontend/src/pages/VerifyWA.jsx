@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, errorText } from "../lib/api";
 import { AlertCircle, CheckCircle, Loader2, Clock } from "lucide-react";
+import { Turnstile, turnstileEnabled } from "../components/Turnstile";
 import "./VerifyWA.css";
 
 export default function VerifyWA() {
@@ -13,6 +14,7 @@ export default function VerifyWA() {
   const [timeLeft, setTimeLeft] = useState(600);
   const [formData, setFormData] = useState(null);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   useEffect(() => {
     const stored = sessionStorage.getItem("pendingRegistration");
@@ -76,7 +78,9 @@ export default function VerifyWA() {
     setBusy(true);
     setErr("");
     try {
-      await api.post("/auth/send-wa-code", { phone: formData.whatsapp, name: formData.name });
+      if (turnstileEnabled() && !turnstileToken) throw new Error("Selesaikan verifikasi keamanan terlebih dahulu.");
+      await api.post("/auth/send-wa-code", { phone: formData.whatsapp, name: formData.name, turnstileToken });
+      setTurnstileToken("");
       setMsg("Kode verifikasi terkirim ke WhatsApp Anda.");
       setResendCooldown(60);
     } catch (ex) {
@@ -88,6 +92,10 @@ export default function VerifyWA() {
 
   const verifyAndRegister = async () => {
     if (!formData || code.length < 4) return;
+    if (turnstileEnabled() && !turnstileToken) {
+      setErr("Selesaikan verifikasi keamanan terlebih dahulu.");
+      return;
+    }
     setBusy(true);
     setErr("");
     setMsg("");
@@ -107,7 +115,7 @@ export default function VerifyWA() {
       };
       const regRes = await api.post("/auth/register", registerData);
       
-      const loginRes = await api.post("/auth/login", { email: formData.email, password: formData.password });
+      const loginRes = await api.post("/auth/login", { email: formData.email, password: formData.password, turnstileToken });
       localStorage.setItem("user", JSON.stringify(loginRes.data));
       sessionStorage.removeItem("pendingRegistration");
       
@@ -154,6 +162,8 @@ export default function VerifyWA() {
 
         {msg && <div className="form-info">{msg}</div>}
         {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
+
+        <Turnstile onVerify={setTurnstileToken} />
 
         <form onSubmit={(e) => { e.preventDefault(); verifyAndRegister(); }}>
           <label>
