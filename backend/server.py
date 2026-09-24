@@ -1662,13 +1662,24 @@ async def public_buildza_article(article_slug: str):
     return article
 
 @app.get("/artikel/{article_slug}", include_in_schema=False)
-async def legacy_article_redirect(article_slug: str):
+async def legacy_article_redirect(request: Request, article_slug: str):
     """Serve the historical /artikel/ URL, or 301 it to the canonical slug.
 
     Renamed articles keep their 301 so search engines consolidate signals.
     Current slugs are rendered directly with dynamic social metadata, so a
     shared link never depends on a redirect hop to show the right card.
+
+    On a business subdomain /artikel/<slug> is that site's own article, so the
+    hosted site is resolved first and the platform rules only apply elsewhere.
     """
+    site_slug = _hosted_site_slug(request)
+    if site_slug:
+        site = await _published_business_site(site_slug)
+        if site:
+            document = await _business_site_article_document(request, site, article_slug)
+            if document:
+                return Response(content=document, media_type="text/html; charset=utf-8")
+            raise HTTPException(404, "Artikel tidak ditemukan")
     article = await db.platform_articles.find_one({"$or": [{"slug": article_slug}, {"oldSlugs": article_slug}], "status": "PUBLISHED"}, {"_id": 0, "slug": 1})
     if not article: raise HTTPException(404, "Artikel tidak ditemukan")
     if article.get("slug") == article_slug:
@@ -2829,7 +2840,7 @@ def _render_seo_document(metadata: dict, spa_html: str) -> str:
         f'<meta name="robots" content="index, follow" />',
         f'<link rel="canonical" href="{canonical}" />',
         f'<meta property="og:type" content="{og_type}" />',
-        f'<meta property="og:site_name" content="Situska" />',
+        f'<meta property="og:site_name" content="{escape(metadata.get("site_name") or "Situska")}" />',
         f'<meta property="og:title" content="{title}" />',
         f'<meta property="og:description" content="{description}" />',
         f'<meta property="og:url" content="{url}" />',
@@ -2949,6 +2960,300 @@ async def platform_article_og_image(slug: str):
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=604800"},
     )
+
+# ---------------------------------------------------------------------------
+# Generated business sites (*.situska.com)
+#
+# Every hosted site loads the same SPA shell, so the static index.html can only
+# ever advertise Situska itself.  The handlers below answer crawlers with a
+# shell whose <head> describes the business that actually owns the host:
+#
+#   https://<slug>.situska.com/            -> "<businessName> | <slogan>"
+#   https://<slug>.situska.com/artikel     -> "Artikel | <businessName>"
+#   https://<slug>.situska.com/artikel/<s> -> "<article title> | <businessName>"
+#
+# The platform keeps its existing landing page: every handler raises 404 when
+# the Host is not a business subdomain, so nginx falls back to the static
+# index.html exactly as it did before.
+# ---------------------------------------------------------------------------
+
+
+def _hosted_site_slug(request: Request) -> str:
+    """Return the business slug when the request targets <slug>.situska.com."""
+    host = (request.headers.get("host") or "").split(":", 1)[0].lower().strip(".")
+    suffix = f".{PUBLIC_SITE_DOMAIN}"
+    if not host.endswith(suffix):
+        return ""
+    label = host[: -len(suffix)]
+    if not label or label == "www" or "." in label:
+        return ""
+    return label
+
+
+def _request_origin(request: Request) -> str:
+    """Absolute scheme://host, so canonical URLs stay on the current host."""
+    host = (request.headers.get("host") or "").split(":", 1)[0].lower().strip(".")
+    if not host:
+        return SEOGenerator.BASE_URL.rstrip("/")
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    if not proto:
+        # Cloudflare terminates TLS and reports the visitor scheme here, which
+        # is the only trustworthy signal when the proxy hop itself is plain HTTP.
+        visitor = re.search(r'"scheme"\s*:\s*"([a-z]+)"', request.headers.get("cf-visitor") or "", re.IGNORECASE)
+        proto = visitor.group(1).lower() if visitor else ""
+    if not proto:
+        proto = (request.url.scheme or "https").lower()
+    if proto not in ("http", "https"):
+        proto = "https"
+    return f"{proto}://{host}"
+
+
+async def _published_business_site(slug: str):
+    """Published, indexable business site for a subdomain slug, or None."""
+    if db is None or not slug:
+        return None
+    return await db.websites.find_one(
+        {"slug": slug, "status": "PUBLISHED", "seoNoIndex": {"$ne": True}},
+        {
+            "_id": 0, "id": 1, "slug": 1, "businessName": 1, "category": 1,
+            "description": 1, "logoUrl": 1, "coverImageUrl": 1,
+            "aiGeneratedContent": 1,
+        },
+    )
+
+
+def _site_slogan(site: dict) -> str:
+    ai = site.get("aiGeneratedContent") or {}
+    return (ai.get("heroTitle") or "").strip() or (site.get("category") or "").strip()
+
+
+def _site_description(site: dict) -> str:
+    ai = site.get("aiGeneratedContent") or {}
+    for candidate in (
+        site.get("description"), ai.get("heroSubtitle"), ai.get("about"),
+        ai.get("heroTitle"), site.get("category"),
+    ):
+        text = (candidate or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _site_share_image(request: Request, site_slug: str, article_slug: str = "") -> str:
+    """Absolute URL of the derived 1200x630 JPEG used for social previews."""
+    origin = _request_origin(request)
+    if article_slug:
+        return f"{origin}/og-image/site/{site_slug}/{article_slug}.jpg"
+    return f"{origin}/og-image/site/{site_slug}.jpg"
+
+
+def _business_site_metadata(site: dict, request: Request, canonical_path: str = "/") -> dict:
+    """Social/SEO metadata for the landing page of a generated business site."""
+    name = (site.get("businessName") or "").strip() or "Usaha"
+    slogan = _site_slogan(site)
+    origin = _request_origin(request)
+    url = f"{origin}{canonical_path}"
+    share_image = _site_share_image(request, site.get("slug") or "")
+    description = _site_description(site)
+    default_title = f"{name} | {slogan}" if slogan else name
+    return {
+        "title": (site.get("seoTitle") or "").strip() or default_title,
+        "description": description,
+        "image": share_image,
+        "coverImageAlt": (site.get("coverImageAlt") or "").strip() or name,
+        "image_type": "image/jpeg",
+        "image_width": OG_IMAGE_WIDTH,
+        "image_height": OG_IMAGE_HEIGHT,
+        "url": url,
+        "canonical": url,
+        "type": "website",
+        "site_name": name,
+        "schema": {
+            "@context": "https://schema.org",
+            "@type": "LocalBusiness",
+            "name": name,
+            "description": description,
+            "url": url,
+            "image": share_image,
+            "logo": _absolute_media_url(site.get("logoUrl") or ""),
+        },
+    }
+
+
+def _business_site_article_metadata(site: dict, article: dict, request: Request) -> dict:
+    """Social/SEO metadata for an article published on a business site."""
+    name = (site.get("businessName") or "").strip() or "Usaha"
+    article_slug = article.get("slug") or ""
+    origin = _request_origin(request)
+    url = f"{origin}/artikel/{article_slug}"
+    share_image = _site_share_image(request, site.get("slug") or "", article_slug)
+    title = (article.get("seoTitle") or "").strip() or (article.get("title") or "").strip() or "Artikel"
+    description = (article.get("excerpt") or "").strip() or _site_description(site)
+    return {
+        "title": f"{title} | {name}",
+        "description": description,
+        "image": share_image,
+        "coverImageAlt": (article.get("coverImageAlt") or "").strip() or title,
+        "image_type": "image/jpeg",
+        "image_width": OG_IMAGE_WIDTH,
+        "image_height": OG_IMAGE_HEIGHT,
+        "url": url,
+        "canonical": url,
+        "type": "article",
+        "site_name": name,
+        "schema": {
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": title,
+            "description": description,
+            "url": url,
+            "image": share_image,
+            "publisher": {"@type": "Organization", "name": name},
+        },
+    }
+
+
+async def _business_site_article_document(request: Request, site: dict, article_slug: str):
+    """Rendered shell for one article of a business site, or None when absent."""
+    if db is None or not article_slug:
+        return None
+    article = await db.articles.find_one(
+        {
+            "websiteId": site.get("id"),
+            "$or": [{"slug": article_slug}, {"oldSlugs": article_slug}],
+            "status": "PUBLISHED",
+        },
+        {"_id": 0, "slug": 1, "title": 1, "excerpt": 1, "coverImageUrl": 1, "content": 1},
+    )
+    if not article:
+        return None
+    spa_html = await _get_spa_index_html()
+    return _render_seo_document(_business_site_article_metadata(site, article, request), spa_html)
+
+
+async def _site_share_image_response(cache_key: str, sources, request: Request):
+    """Derive (and cache) a 1200x630 JPEG from the first usable source image."""
+    cache_file = os.path.join(OG_IMAGE_CACHE_DIR, f"{cache_key}.jpg")
+    try:
+        if os.path.getsize(cache_file) > 0:
+            with open(cache_file, "rb") as handle:
+                return Response(
+                    handle.read(),
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=604800"},
+                )
+    except OSError:
+        pass
+
+    payload = None
+    fallback = ""
+    for candidate in sources:
+        candidate = (candidate or "").strip()
+        if not candidate:
+            continue
+        fallback = fallback or candidate
+        if candidate.startswith(("http://", "https://")):
+            target = candidate
+        else:
+            target = f"{FRONTEND_MEDIA_BASE}{candidate}"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                fetched = await client.get(target)
+            if fetched.status_code == 200 and fetched.content:
+                payload = _build_og_jpeg(fetched.content)
+                break
+        except Exception as exc:
+            log.warning("Gagal mengambil gambar %s untuk %s: %s", target, cache_key, exc)
+
+    if not payload:
+        if fallback:
+            absolute = fallback if fallback.startswith(("http://", "https://")) else f"{_request_origin(request)}{fallback}"
+            return RedirectResponse(absolute, status_code=302)
+        raise HTTPException(status_code=404, detail="Gambar tidak ditemukan")
+
+    try:
+        os.makedirs(OG_IMAGE_CACHE_DIR, exist_ok=True)
+        with open(cache_file, "wb") as handle:
+            handle.write(payload)
+    except OSError as exc:
+        log.warning("Gagal menyimpan cache gambar %s: %s", cache_key, exc)
+
+    return Response(
+        payload,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
+
+
+@app.get("/og-image/site/{site_slug}.jpg", include_in_schema=False)
+async def business_site_share_image(request: Request, site_slug: str):
+    """Share image for a generated site's landing page."""
+    site = await _published_business_site(site_slug)
+    if not site:
+        raise HTTPException(status_code=404, detail="Gambar tidak ditemukan")
+    return await _site_share_image_response(
+        f"site-{site_slug}",
+        [site.get("coverImageUrl"), site.get("logoUrl")],
+        request,
+    )
+
+
+@app.get("/og-image/site/{site_slug}/{article_slug}.jpg", include_in_schema=False)
+async def business_site_article_share_image(request: Request, site_slug: str, article_slug: str):
+    """Share image for one article of a generated site."""
+    site = await _published_business_site(site_slug)
+    article = None
+    if site and db is not None:
+        article = await db.articles.find_one(
+            {
+                "websiteId": site.get("id"),
+                "$or": [{"slug": article_slug}, {"oldSlugs": article_slug}],
+                "status": "PUBLISHED",
+            },
+            {"_id": 0, "slug": 1, "coverImageUrl": 1, "content": 1},
+        )
+    if not site or not article:
+        raise HTTPException(status_code=404, detail="Gambar tidak ditemukan")
+    return await _site_share_image_response(
+        f"site-{site_slug}-art-{article_slug}",
+        [
+            _extract_first_image(article.get("content") or ""),
+            article.get("coverImageUrl"),
+            site.get("coverImageUrl"),
+        ],
+        request,
+    )
+
+
+@app.get("/", include_in_schema=False)
+async def business_site_home(request: Request):
+    """Landing page of a generated site; 404 elsewhere so nginx keeps serving
+    the platform index.html for situska.com itself."""
+    site_slug = _hosted_site_slug(request)
+    site = await _published_business_site(site_slug) if site_slug else None
+    if not site:
+        raise HTTPException(status_code=404, detail="Halaman tidak ditemukan")
+    spa_html = await _get_spa_index_html()
+    document = _render_seo_document(_business_site_metadata(site, request), spa_html)
+    return Response(content=document, media_type="text/html; charset=utf-8")
+
+
+@app.get("/artikel", include_in_schema=False)
+async def business_site_article_index(request: Request):
+    """Article index of a generated site; 404 elsewhere so the SPA handles it."""
+    site_slug = _hosted_site_slug(request)
+    site = await _published_business_site(site_slug) if site_slug else None
+    if not site:
+        raise HTTPException(status_code=404, detail="Halaman tidak ditemukan")
+    name = (site.get("businessName") or "").strip() or "Usaha"
+    metadata = _business_site_metadata(site, request, "/artikel")
+    metadata["title"] = f"Artikel | {name}"
+    metadata["schema"] = {}
+    spa_html = await _get_spa_index_html()
+    document = _render_seo_document(metadata, spa_html)
+    return Response(content=document, media_type="text/html; charset=utf-8")
+
 
 # Registered last on purpose: Starlette matches routes in definition order, so
 # every concrete /api route, /sitemap.xml and /robots.txt still takes priority.
