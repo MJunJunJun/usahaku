@@ -2717,6 +2717,10 @@ def _absolute_media_url(value: str) -> str:
 OG_IMAGE_WIDTH = 1200
 OG_IMAGE_HEIGHT = 630
 OG_IMAGE_QUALITY = 82
+# Hard ceiling for the derived share image.  A pure-noise source (the worst
+# case for JPEG) can still land near 270 KB at quality 82, so re-encode at a
+# lower quality until the payload fits.
+OG_IMAGE_MAX_BYTES = 250 * 1024
 OG_IMAGE_CACHE_DIR = os.environ.get("OG_IMAGE_CACHE_DIR", "/tmp/og_image_cache")
 FRONTEND_MEDIA_BASE = os.environ.get("FRONTEND_MEDIA_BASE", "http://frontend:3000")
 
@@ -2760,7 +2764,14 @@ def _build_og_jpeg(raw: bytes):
             img = img.crop((0, top, w, top + new_h))
         img = img.resize((OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT), Image.LANCZOS)
         out = BytesIO()
-        img.save(out, format="JPEG", quality=OG_IMAGE_QUALITY, optimize=True, progressive=True)
+        quality = OG_IMAGE_QUALITY
+        while True:
+            out.seek(0)
+            out.truncate(0)
+            img.save(out, format="JPEG", quality=quality, optimize=True, progressive=True)
+            if out.tell() <= OG_IMAGE_MAX_BYTES or quality <= 60:
+                break
+            quality -= 10
     return out.getvalue()
 
 
