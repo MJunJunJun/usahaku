@@ -23,6 +23,11 @@ except ImportError:
     pyotp = None
 from platform_article_catalog import PLATFORM_ARTICLES
 
+try:
+    from seoutils import SEOGenerator
+except Exception:  # pragma: no cover - SEO module must never break the API
+    SEOGenerator = None
+
 import wa_service
 from wa_templates import render_template, rupiah
 
@@ -164,7 +169,7 @@ async def ensure_showcase_sites(admin_whatsapp: str):
         await db.users.insert_one({"id": showcase_owner_id, "name": "Situska Showcase", "email": "showcase@usahaku.internal", "password_hash": "", "role": "SYSTEM", "accountStatus": "ACTIVE", "subscriptionStatus": "ACTIVE", "planSlug": "premium", "websiteQuota": 999, "createdAt": now()})
     for spec in SHOWCASE_SITES:
         site = await db.websites.find_one({"slug": spec["slug"]}, {"_id": 0})
-        website_id = site["id"] if site else uid()
+        website_id = (site or {}).get("id") or uid()
         website = {
             "id": website_id, "userId": showcase_owner_id, "isShowcase": True,
             "businessName": spec["name"], "category": spec["category"], "description": spec["description"],
@@ -173,7 +178,7 @@ async def ensure_showcase_sites(admin_whatsapp: str):
             "aiGeneratedContent": {"heroTitle": spec["hero"], "heroSubtitle": spec["description"], "heroCta": "Lihat katalog", "about": spec["description"], "highlights": ["Pilihan berkualitas", "Mudah dipesan", "Pelayanan ramah"], "productHeadline": "Pilihan favorit", "primaryColor": spec["primary"], "accentColor": spec["primary"], "style": spec["style"]},
             "businessHours": [], "updatedAt": now(), "createdAt": site.get("createdAt", now()) if site else now(),
         }
-        await db.websites.update_one({"id": website_id}, {"$set": website}, upsert=True)
+        await db.websites.update_one({"slug": spec["slug"]}, {"$set": website}, upsert=True)
         await db.products.delete_many({"websiteId": website_id})
         for index, (name, price) in enumerate(spec["products"]):
             image_url = f"/assets/showcase/{spec['slug'].replace('demo-', '')}-{slugify(name)}.png"
@@ -1658,9 +1663,18 @@ async def public_buildza_article(article_slug: str):
 
 @app.get("/artikel/{article_slug}", include_in_schema=False)
 async def legacy_article_redirect(article_slug: str):
-    """Redirect the historical /artikel/ URL to the root-level canonical URL."""
+    """Serve the historical /artikel/ URL, or 301 it to the canonical slug.
+
+    Renamed articles keep their 301 so search engines consolidate signals.
+    Current slugs are rendered directly with dynamic social metadata, so a
+    shared link never depends on a redirect hop to show the right card.
+    """
     article = await db.platform_articles.find_one({"$or": [{"slug": article_slug}, {"oldSlugs": article_slug}], "status": "PUBLISHED"}, {"_id": 0, "slug": 1})
     if not article: raise HTTPException(404, "Artikel tidak ditemukan")
+    if article.get("slug") == article_slug:
+        document = await _platform_article_document(article_slug)
+        if document:
+            return Response(content=document, media_type="text/html; charset=utf-8")
     return RedirectResponse(url=f"/{article['slug']}", status_code=301)
 
 @api.get("/admin/payments")
@@ -2661,3 +2675,160 @@ async def shutdown():
         client.close()
     except Exception:
         pass
+
+# ===========================================================================
+# Dynamic SEO / Open Graph rendering for public article pages
+# ---------------------------------------------------------------------------
+# Crawlers (WhatsApp, Facebook, X, Google, Slack) never execute the React
+# SPA, so an article URL must already carry the real title, description and
+# share image in its <head>.  We therefore take the *current* SPA shell from
+# the frontend image and inject per-article metadata into it.  Human visitors
+# still hydrate the normal app because the hashed asset tags are untouched,
+# and the shell always tracks whatever the frontend build currently ships.
+# ===========================================================================
+
+SPA_INDEX_URL = os.environ.get("SPA_INDEX_URL", "http://frontend:3000/index.html")
+SPA_INDEX_TTL_SECONDS = 300
+_spa_index_cache = {"html": "", "fetched_at": 0.0}
+
+
+def _extract_first_image(content: str) -> str:
+    """Return the first inline image of an article body, if there is one."""
+    if not content:
+        return ""
+    match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r'!\[[^\]]*\]\(([^)\s]+)', content)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def _absolute_media_url(value: str) -> str:
+    """Turn a stored relative media path into an absolute, shareable URL."""
+    if not value:
+        return ""
+    if value.startswith(("http://", "https://")):
+        return value
+    if value.startswith("/") and SEOGenerator is not None:
+        return f"{SEOGenerator.BASE_URL}{value}"
+    return value
+
+
+async def _get_spa_index_html() -> str:
+    """Fetch (and briefly cache) the SPA shell served by the frontend image."""
+    cached = _spa_index_cache.get("html") or ""
+    age = time.time() - float(_spa_index_cache.get("fetched_at") or 0.0)
+    if cached and age < SPA_INDEX_TTL_SECONDS:
+        return cached
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as http_client:
+            response = await http_client.get(SPA_INDEX_URL)
+        if response.status_code == 200 and "<head" in response.text:
+            _spa_index_cache["html"] = response.text
+            _spa_index_cache["fetched_at"] = time.time()
+            return response.text
+        log.warning("SPA shell tidak tersedia (status %s)", response.status_code)
+    except Exception as exc:  # pragma: no cover - transient network issue
+        log.warning("Gagal mengambil SPA shell: %s", exc)
+    return cached
+
+
+def _render_seo_document(metadata: dict, spa_html: str) -> str:
+    """Inject crawler-facing metadata into the SPA shell (or a fallback page)."""
+    escape = getattr(SEOGenerator, "escape_html", None) or (lambda value: value or "")
+    title = escape(metadata.get("title", ""))
+    description = escape(metadata.get("description", ""))
+    image = escape(metadata.get("image", ""))
+    url = escape(metadata.get("url", ""))
+    canonical = escape(metadata.get("canonical") or metadata.get("url", ""))
+    og_type = escape(metadata.get("type", "article"))
+    image_alt = escape(metadata.get("coverImageAlt", ""))
+    try:
+        schema_json = json.dumps(metadata.get("schema", {}), ensure_ascii=False)
+    except (TypeError, ValueError):
+        schema_json = "{}"
+
+    head_tags = [
+        f"<title>{title}</title>",
+        f'<meta name="description" content="{description}" />',
+        f'<meta name="robots" content="index, follow" />',
+        f'<link rel="canonical" href="{canonical}" />',
+        f'<meta property="og:type" content="{og_type}" />',
+        '<meta property="og:site_name" content="Situska" />',
+        f'<meta property="og:title" content="{title}" />',
+        f'<meta property="og:description" content="{description}" />',
+        f'<meta property="og:url" content="{url}" />',
+        f'<meta property="og:image" content="{image}" />',
+        f'<meta property="og:image:alt" content="{image_alt}" />',
+        '<meta name="twitter:card" content="summary_large_image" />',
+        f'<meta name="twitter:title" content="{title}" />',
+        f'<meta name="twitter:description" content="{description}" />',
+        f'<meta name="twitter:image" content="{image}" />',
+        f'<script type="application/ld+json">{schema_json}</script>',
+    ]
+    head_block = "\n    ".join(head_tags)
+
+    if not spa_html:
+        if SEOGenerator is not None:
+            return SEOGenerator.html_template(metadata, body_html="")
+        return ('<!doctype html><html lang="id"><head>' + head_block + "</head><body></body></html>")
+
+    html = re.sub(r"<title>.*?</title>", "", spa_html, flags=re.IGNORECASE | re.DOTALL)
+    html = re.sub(r'<meta\s+name="(?:description|robots|twitter:[^"]*)"[^>]*>\s*', "", html, flags=re.IGNORECASE)
+    html = re.sub(r'<meta\s+property="og:[^"]*"[^>]*>\s*', "", html, flags=re.IGNORECASE)
+    html = re.sub(r'<link\s+rel="canonical"[^>]*>\s*', "", html, flags=re.IGNORECASE)
+    if "</head>" in html:
+        html = html.replace("</head>", "    " + head_block + "\n  </head>", 1)
+    else:
+        html = head_block + html
+    return html
+
+
+async def _platform_article_document(slug: str):
+    """Build the SEO document for a published platform article, if it exists."""
+    if SEOGenerator is None:
+        return None
+    article = await db.platform_articles.find_one(
+        {"$or": [{"slug": slug}, {"oldSlugs": slug}], "status": "PUBLISHED"},
+        {"_id": 0},
+    )
+    if not article:
+        return None
+    canonical = f"{SEOGenerator.BASE_URL}/{article.get('slug') or slug}"
+    # Prefer the main image inside the article body, then the stored cover.
+    image = _absolute_media_url(
+        _extract_first_image(article.get("content", "")) or article.get("coverImageUrl", "")
+    )
+    metadata = SEOGenerator.generate_platform_article_metadata(
+        title=article.get("title", ""),
+        seo_title=article.get("seoTitle"),
+        excerpt=article.get("excerpt", ""),
+        content=article.get("content", ""),
+        cover_image_url=image,
+        cover_image_alt=article.get("coverImageAlt", ""),
+        category=article.get("category", ""),
+        published_at=article.get("publishedAt", "") or "",
+        updated_at=article.get("updatedAt", "") or "",
+        canonical_url=canonical,
+    )
+    canonical = f"{SEOGenerator.BASE_URL}/{article.get('slug', slug)}"
+    metadata["url"] = canonical
+    metadata["canonical"] = canonical
+    return _render_seo_document(metadata, await _get_spa_index_html())
+
+
+# Registered last on purpose: Starlette matches routes in definition order, so
+# every concrete /api route, /sitemap.xml and /robots.txt still takes priority.
+@app.get("/{slug}", include_in_schema=False)
+async def platform_article_seo(slug: str):
+    """Serve root-level platform article URLs with dynamic social metadata.
+
+    Unknown slugs raise 404 so the frontend proxy can fall back to the SPA.
+    """
+    document = await _platform_article_document(slug)
+    if document:
+        return Response(content=document, media_type="text/html; charset=utf-8")
+    raise HTTPException(404, "Halaman tidak ditemukan")

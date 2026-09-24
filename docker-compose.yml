@@ -62,6 +62,10 @@ services:
       CHOKIDAR_USEPOLLING: "true"
     ports:
       - "0.0.0.0:3000:3000"
+    volumes:
+      # Nginx virtual host is mounted from the repo so HTML routing and SEO
+      # changes apply without rebuilding the React image.
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   gowa:
     image: aldinokemal2104/go-whatsapp-web-multidevice:latest
