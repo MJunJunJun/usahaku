@@ -484,6 +484,12 @@ class SettingsInput(BaseModel):
     additionalWebsitePrice: Optional[int] = None
     waMessageTemplates: Optional[List[dict]] = None
 
+class AdminCredentialsInput(BaseModel):
+    """Perubahan kredensial login admin (halaman Pengaturan)."""
+    currentPassword: str
+    newEmail: Optional[EmailStr] = None
+    newPassword: Optional[str] = None
+
 class GeneratorTemplateCatalogInput(BaseModel):
     catalog: dict
 
@@ -1839,6 +1845,69 @@ async def admin_settings_update(data: SettingsInput, admin=Depends(admin_user)):
     await log_activity(admin["id"], "update_settings", None, "platform", json.dumps(updates))
     return await db.settings.find_one({"id": "platform"}, {"_id": 0})
 
+# --- Kredensial login admin ------------------------------------------------
+# Email dan password admin dapat diubah sendiri dari /admin/settings. Nilai di
+# .env hanya dipakai sekali saat bootstrap admin pertama, agar perubahan dari UI
+# tidak dikembalikan atau digandakan setiap container dijalankan ulang.
+
+@api.get("/admin/account")
+async def admin_account(admin=Depends(admin_user)):
+    return {
+        "id": admin["id"],
+        "name": admin.get("name") or "",
+        "email": admin.get("email") or "",
+        "role": admin.get("role") or "",
+        "mfaActive": bool(ADMIN_TOTP_SECRET),
+        "credentialsUpdatedAt": admin.get("credentialsUpdatedAt") or "",
+    }
+
+@api.put("/admin/account/credentials")
+async def admin_account_credentials(data: AdminCredentialsInput, response: Response, request: Request, admin=Depends(admin_user)):
+    # Password saat ini tetap diminta sebagai bukti pemilik akun, walau pemanggil
+    # sudah memegang sesi admin yang sah.
+    if not verify_password(data.currentPassword or "", admin.get("password_hash") or ""):
+        raise HTTPException(401, "Password saat ini tidak sesuai.")
+
+    updates = {}
+    changed = []
+
+    if data.newEmail:
+        new_email = str(data.newEmail).strip().lower()
+        if new_email and new_email != (admin.get("email") or "").lower():
+            bentrok = await db.users.find_one({"email": new_email, "id": {"$ne": admin["id"]}})
+            if bentrok:
+                raise HTTPException(409, "Email tersebut sudah dipakai akun lain.")
+            updates["email"] = new_email
+            changed.append("email")
+
+    if data.newPassword:
+        if len(data.newPassword) < 8:
+            raise HTTPException(400, "Password baru minimal 8 karakter.")
+        if not re.search(r"[A-Za-z]", data.newPassword) or not re.search(r"\d", data.newPassword):
+            raise HTTPException(400, "Password baru harus memuat huruf dan angka.")
+        if data.newPassword == data.currentPassword:
+            raise HTTPException(400, "Password baru harus berbeda dari password saat ini.")
+        updates["password_hash"] = hash_password(data.newPassword)
+        changed.append("password")
+
+    if not updates:
+        raise HTTPException(400, "Tidak ada perubahan. Isi email atau password baru lebih dulu.")
+
+    # Sesi lain dicabut; sesi yang sedang dipakai tetap hidup lewat cookie baru.
+    new_version = int(admin.get("sessionVersion", 0)) + 1
+    updates["sessionVersion"] = new_version
+    updates["credentialsUpdatedAt"] = now()
+    await db.users.update_one({"id": admin["id"]}, {"$set": updates})
+
+    # Sesi di perangkat lain dicabut (sessionVersion naik); sesi yang sedang
+    # dipakai diberi cookie baru supaya admin tidak ter-logout sendiri setelah
+    # menyimpan perubahan dari halaman Pengaturan.
+    set_auth_cookie(response, request, token(admin["id"], days=AUTH_COOKIE_DAYS, session_version=new_version))
+
+    await log_activity(admin["id"], "update_login_credentials", admin["id"], "login-credentials", "Diperbarui: " + ", ".join(changed))
+    log.info("Kredensial login admin diperbarui (%s) untuk user %s", ", ".join(changed), admin["id"])
+    return {"ok": True, "changed": changed, "user": public(await db.users.find_one({"id": admin["id"]}, {"_id": 0}))}
+
 # Generator templates are intentionally kept in a single portable catalogue.
 # The frontend has defaults for a fresh installation; after an admin saves,
 # every generator screen reads this document regardless of the active domain.
@@ -2683,7 +2752,7 @@ async def startup():
         raise RuntimeError("ADMIN_EMAIL dan ADMIN_PASSWORD harus diatur bersama-sama.")
     if admin_email and len(admin_password) < 12:
         raise RuntimeError("ADMIN_PASSWORD bootstrap harus minimal 12 karakter.")
-    if admin_email and not await db.users.find_one({"email": admin_email}):
+    if admin_email and not await db.users.find_one({"role": "ADMIN"}):
         await db.users.insert_one({
             "id": uid(),
             "name": "Admin Situska",
@@ -2697,6 +2766,8 @@ async def startup():
         })
     elif not admin_email:
         log.warning("Administrator bootstrap tidak dibuat: ADMIN_EMAIL/ADMIN_PASSWORD belum diatur.")
+    else:
+        log.info("Bootstrap admin dilewati: akun admin sudah ada. Kredensial dikelola dari /admin/settings.")
 
     # Legacy catalogue retained below only for upgrade-history context.  The
     # current public learning centre is defined by PLATFORM_ARTICLES.

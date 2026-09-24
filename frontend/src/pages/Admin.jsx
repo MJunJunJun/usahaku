@@ -453,6 +453,71 @@ export function AdminActivity() {
   );
 }
 
+export function AdminLoginSettings() {
+  const [info, setInfo] = useState(null);
+  const [email, setEmail] = useState("");
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api.get("/admin/account")
+      .then(r => { setInfo(r.data); setEmail(r.data.email || ""); })
+      .catch(e => setErr(errorText(e)));
+  }, []);
+
+  const save = async () => {
+    setMsg(""); setErr("");
+    if (next && next !== confirm) { setErr("Konfirmasi password baru belum sama."); return; }
+    if (!current) { setErr("Isi password saat ini untuk menyimpan perubahan."); return; }
+    setSaving(true);
+    try {
+      const payload = { currentPassword: current };
+      const target = email.trim().toLowerCase();
+      if (target && target !== (info?.email || "").toLowerCase()) payload.newEmail = target;
+      if (next) payload.newPassword = next;
+      const r = await api.put("/admin/account/credentials", payload);
+      const user = r.data.user || {};
+      setInfo({ ...(info || {}), ...user });
+      setEmail(user.email || email);
+      setCurrent(""); setNext(""); setConfirm("");
+      setMsg("Kredensial login diperbarui. Gunakan email dan password baru saat masuk berikutnya.");
+    } catch (e) { setErr(errorText(e)); }
+    finally { setSaving(false); }
+  };
+
+  const pwType = reveal ? "text" : "password";
+  return (
+    <div className="wizard-card" style={{ marginTop: 24 }}>
+      <div className="eyebrow">PENGATURAN LOGIN</div>
+      <p className="form-intro">Email (username) dan password berikut dipakai untuk masuk ke panel admin Situska. Isi password saat ini untuk menyimpan perubahan.</p>
+      <div className="form-grid">
+        <label>Email / username login
+          <input data-testid="settings-login-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nama@domain.com" />
+        </label>
+        <label>Password saat ini
+          <input data-testid="settings-login-current-password" type={pwType} value={current} onChange={e => setCurrent(e.target.value)} placeholder="Wajib diisi" autoComplete="current-password" />
+        </label>
+        <label>Password baru
+          <input data-testid="settings-login-new-password" type={pwType} value={next} onChange={e => setNext(e.target.value)} placeholder="Kosongkan bila tidak diganti" autoComplete="new-password" />
+        </label>
+        <label>Ulangi password baru
+          <input data-testid="settings-login-confirm-password" type={pwType} value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Ulangi password baru" autoComplete="new-password" />
+        </label>
+      </div>
+      <p className="form-intro">Minimal 8 karakter dan harus memuat huruf serta angka. Setelah password diganti, sesi login di perangkat lain otomatis dicabut.{info && info.credentialsUpdatedAt ? ` Terakhir diubah: ${formatDateTime(info.credentialsUpdatedAt)}.` : ""}</p>
+      <Button type="button" variant="outline" onClick={() => setReveal(v => !v)}>{reveal ? "Sembunyikan password" : "Tampilkan password"}</Button>
+      {msg && <div className="form-info">{msg}</div>}
+      <FormError msg={err} />
+      <Button data-testid="settings-login-save" onClick={save} disabled={saving || !current}>{saving ? "Menyimpan..." : "Simpan pengaturan login"}</Button>
+    </div>
+  );
+}
+
 export function AdminSettings() {
   const [s, setS] = useState(null);
   const [msg, setMsg] = useState("");
@@ -509,6 +574,7 @@ export function AdminSettings() {
         <FormError msg={err} />
         <Button data-testid="settings-save-button" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan pengaturan"}</Button>
       </div>
+      <AdminLoginSettings />
     </div>
   );
 }
