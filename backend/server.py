@@ -2714,6 +2714,55 @@ def _absolute_media_url(value: str) -> str:
     if value.startswith("/") and SEOGenerator is not None:
         return f"{SEOGenerator.BASE_URL}{value}"
     return value
+OG_IMAGE_WIDTH = 1200
+OG_IMAGE_HEIGHT = 630
+OG_IMAGE_QUALITY = 82
+OG_IMAGE_CACHE_DIR = os.environ.get("OG_IMAGE_CACHE_DIR", "/tmp/og_image_cache")
+FRONTEND_MEDIA_BASE = os.environ.get("FRONTEND_MEDIA_BASE", "http://frontend:3000")
+
+
+def _og_image_url(slug: str) -> str:
+    """Absolute URL of the derived, crawler friendly share image."""
+    if SEOGenerator is None or not slug:
+        return ""
+    return f"{SEOGenerator.BASE_URL}/og-image/{slug}.jpg"
+
+
+async def _article_source_image(slug: str) -> str:
+    """Stored path of the share image (body image first, then the cover)."""
+    if db is None or not slug:
+        return ""
+    article = await db.platform_articles.find_one(
+        {"$or": [{"slug": slug}, {"oldSlugs": slug}], "status": "PUBLISHED"},
+        {"_id": 0, "slug": 1, "content": 1, "coverImageUrl": 1},
+    )
+    if not article:
+        return ""
+    return _extract_first_image(article.get("content", "")) or article.get("coverImageUrl", "")
+
+def _build_og_jpeg(raw: bytes):
+    """Centre-crop and resize raw image bytes into a 1200x630 JPEG."""
+    from io import BytesIO
+    from PIL import Image
+    with Image.open(BytesIO(raw)) as img:
+        img = img.convert("RGB")
+        w, h = img.size
+        if w <= 0 or h <= 0:
+            return None
+        ratio = OG_IMAGE_WIDTH / OG_IMAGE_HEIGHT
+        if w / h > ratio:
+            new_w = int(h * ratio)
+            left = (w - new_w) // 2
+            img = img.crop((left, 0, left + new_w, h))
+        else:
+            new_h = int(w / ratio)
+            top = (h - new_h) // 2
+            img = img.crop((0, top, w, top + new_h))
+        img = img.resize((OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT), Image.LANCZOS)
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=OG_IMAGE_QUALITY, optimize=True, progressive=True)
+    return out.getvalue()
+
 
 
 async def _get_spa_index_html() -> str:
@@ -2751,19 +2800,33 @@ def _render_seo_document(metadata: dict, spa_html: str) -> str:
     except (TypeError, ValueError):
         schema_json = "{}"
 
+    image_type = escape(str(metadata.get("image_type") or "image/jpeg"))
+    image_width = escape(str(metadata.get("image_width") or ""))
+    image_height = escape(str(metadata.get("image_height") or ""))
+
+    qt = chr(34)
+    image_size_tags = [
+        "<meta property=" + qt + "og:image:type" + qt + " content=" + qt + image_type + qt + " />",
+    ]
+    if image_width and image_height:
+        image_size_tags.append("<meta property=" + qt + "og:image:width" + qt + " content=" + qt + image_width + qt + " />")
+        image_size_tags.append("<meta property=" + qt + "og:image:height" + qt + " content=" + qt + image_height + qt + " />")
+
     head_tags = [
         f"<title>{title}</title>",
         f'<meta name="description" content="{description}" />',
         f'<meta name="robots" content="index, follow" />',
         f'<link rel="canonical" href="{canonical}" />',
         f'<meta property="og:type" content="{og_type}" />',
-        '<meta property="og:site_name" content="Situska" />',
+        f'<meta property="og:site_name" content="Situska" />',
         f'<meta property="og:title" content="{title}" />',
         f'<meta property="og:description" content="{description}" />',
         f'<meta property="og:url" content="{url}" />',
         f'<meta property="og:image" content="{image}" />',
+        f'<meta property="og:image:secure_url" content="{image}" />',
+        *image_size_tags,
         f'<meta property="og:image:alt" content="{image_alt}" />',
-        '<meta name="twitter:card" content="summary_large_image" />',
+        f'<meta name="twitter:card" content="summary_large_image" />',
         f'<meta name="twitter:title" content="{title}" />',
         f'<meta name="twitter:description" content="{description}" />',
         f'<meta name="twitter:image" content="{image}" />',
@@ -2797,9 +2860,10 @@ async def _platform_article_document(slug: str):
     )
     if not article:
         return None
-    canonical = f"{SEOGenerator.BASE_URL}/{article.get('slug') or slug}"
+    canonical_slug = article.get("slug") or slug
+    canonical = f"{SEOGenerator.BASE_URL}/{canonical_slug}"
     # Prefer the main image inside the article body, then the stored cover.
-    image = _absolute_media_url(
+    source_image = _absolute_media_url(
         _extract_first_image(article.get("content", "")) or article.get("coverImageUrl", "")
     )
     metadata = SEOGenerator.generate_platform_article_metadata(
@@ -2807,18 +2871,73 @@ async def _platform_article_document(slug: str):
         seo_title=article.get("seoTitle"),
         excerpt=article.get("excerpt", ""),
         content=article.get("content", ""),
-        cover_image_url=image,
+        cover_image_url=source_image,
         cover_image_alt=article.get("coverImageAlt", ""),
         category=article.get("category", ""),
         published_at=article.get("publishedAt", "") or "",
         updated_at=article.get("updatedAt", "") or "",
         canonical_url=canonical,
     )
-    canonical = f"{SEOGenerator.BASE_URL}/{article.get('slug', slug)}"
     metadata["url"] = canonical
     metadata["canonical"] = canonical
+    og_image = _og_image_url(canonical_slug)
+    if og_image:
+        metadata["image"] = og_image
+        metadata["image_type"] = "image/jpeg"
+        metadata["image_width"] = OG_IMAGE_WIDTH
+        metadata["image_height"] = OG_IMAGE_HEIGHT
     return _render_seo_document(metadata, await _get_spa_index_html())
 
+
+@app.get("/og-image/{slug}.jpg", include_in_schema=False)
+async def platform_article_og_image(slug: str):
+    """Serve a 1200x630 JPEG for social previews (WhatsApp, Facebook, X).
+
+    WhatsApp only renders a link thumbnail when the image is small and comes
+    with explicit og:image:width/height, so uploads are normalised here.
+    """
+    cache_file = os.path.join(OG_IMAGE_CACHE_DIR, f"{slug}.jpg")
+    try:
+        if os.path.getsize(cache_file) > 0:
+            with open(cache_file, "rb") as handle:
+                return Response(
+                    handle.read(),
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=604800"},
+                )
+    except OSError:
+        pass
+
+    source = await _article_source_image(slug)
+    if not source:
+        raise HTTPException(status_code=404, detail="Gambar artikel tidak ditemukan")
+    payload = None
+    try:
+        import httpx
+        url = source if source.startswith(("http://", "https://")) else f"{FRONTEND_MEDIA_BASE}{source}"
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            fetched = await client.get(url)
+        if fetched.status_code == 200 and fetched.content:
+            payload = _build_og_jpeg(fetched.content)
+    except Exception as exc:
+        log.warning("Gagal menyiapkan OG image %s: %s", slug, exc)
+
+    if not payload:
+        # Never leave a crawler without an image: hand back the original upload.
+        return RedirectResponse(_absolute_media_url(source), status_code=302)
+
+    try:
+        os.makedirs(OG_IMAGE_CACHE_DIR, exist_ok=True)
+        with open(cache_file, "wb") as handle:
+            handle.write(payload)
+    except OSError as exc:
+        log.warning("Gagal menyimpan cache OG image %s: %s", slug, exc)
+
+    return Response(
+        payload,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
 
 # Registered last on purpose: Starlette matches routes in definition order, so
 # every concrete /api route, /sitemap.xml and /robots.txt still takes priority.
