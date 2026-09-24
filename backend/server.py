@@ -706,7 +706,16 @@ async def login(data: AuthInput, response: Response, request: Request):
     if user.get("accountStatus") == "SUSPENDED":
         raise HTTPException(403, "Akun Anda dinonaktifkan. Hubungi admin Situska.")
     if user.get("role") == "ADMIN" and ADMIN_TOTP_SECRET:
-        if not pyotp or not pyotp.TOTP(ADMIN_TOTP_SECRET).verify(data.mfaCode.strip(), valid_window=1):
+        # Secret 2FA yang salah ketik (bukan base32) dulu membuat endpoint ini
+        # berakhir 500. Sekarang dicatat ke log lalu ditolak dengan 401 yang jelas.
+        try:
+            _mfa_valid = bool(pyotp) and pyotp.TOTP(ADMIN_TOTP_SECRET).verify(
+                (data.mfaCode or "").strip(), valid_window=1
+            )
+        except Exception as _exc:
+            log.error("ADMIN_TOTP_SECRET tidak dapat dipakai (%s); perbaiki konfigurasi MFA admin.", _exc)
+            _mfa_valid = False
+        if not _mfa_valid:
             raise HTTPException(401, "Kode autentikasi dua faktor tidak valid.")
     await refresh_status(user)
     set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS, session_version=user.get("sessionVersion", 0)))
@@ -2553,9 +2562,56 @@ async def csrf_protection(request: Request, call_next):
                 return JSONResponse(status_code=403, content={"detail": "Token CSRF tidak valid."})
     return await call_next(request)
 
+def _auth_config_warnings():
+    """Deteksi konfigurasi autentikasi yang tidak valid sejak startup.
+
+    Kesalahan seperti secret Turnstile placeholder atau TOTP bukan base32
+    sebelumnya baru terasa sebagai 400/500 saat pengguna mencoba login. Fungsi
+    ini hanya mencatat peringatan (tidak menghentikan start) agar layanan tetap
+    hidup, tapi operator langsung tahu dari log.
+    """
+    issues = []
+    if TURNSTILE_SECRET_KEY:
+        _low = TURNSTILE_SECRET_KEY.lower()
+        if TURNSTILE_SECRET_KEY.startswith("<") or "redacted" in _low or "change" in _low or "example" in _low:
+            issues.append(
+                "TURNSTILE_SECRET_KEY masih placeholder; verifikasi captcha akan SELALU gagal. "
+                "Kosongkan untuk menonaktifkan pemeriksaan, atau pasang secret asli dari dashboard Cloudflare."
+            )
+        else:
+            try:
+                import urllib.parse as _up
+                import urllib.request as _ur
+                _body = _up.urlencode({"secret": TURNSTILE_SECRET_KEY, "response": "startup-config-probe"}).encode()
+                _req = _ur.Request("https://challenges.cloudflare.com/turnstile/v0/siteverify", data=_body)
+                with _ur.urlopen(_req, timeout=5) as _resp:
+                    _payload = json.loads(_resp.read().decode() or "{}")
+                if "invalid-input-secret" in (_payload.get("error-codes") or []):
+                    issues.append(
+                        "TURNSTILE_SECRET_KEY ditolak Cloudflare (invalid-input-secret); semua login akan gagal. "
+                        "Pasang secret asli dari dashboard Cloudflare atau kosongkan."
+                    )
+            except Exception as _exc:
+                log.warning("Pemeriksaan secret Turnstile dilewati: %s", _exc)
+    if ADMIN_TOTP_SECRET:
+        try:
+            import base64 as _b64
+            _b64.b32decode(ADMIN_TOTP_SECRET + "=" * (-len(ADMIN_TOTP_SECRET) % 8), casefold=True)
+        except Exception:
+            issues.append(
+                "ADMIN_TOTP_SECRET bukan base32 yang valid; login admin akan gagal. "
+                "Pasang secret baru (base32) atau nonaktifkan REQUIRE_ADMIN_MFA."
+            )
+    if REQUIRE_ADMIN_MFA and not ADMIN_TOTP_SECRET:
+        issues.append("REQUIRE_ADMIN_MFA aktif tetapi ADMIN_TOTP_SECRET kosong.")
+    return issues
+
+
 @app.on_event("startup")
 async def startup():
     global client
+    for _issue in _auth_config_warnings():
+        log.warning("KONFIG AUTH: %s", _issue)
     try:
         await client.admin.command("ping")
         log.info("Terhubung ke MongoDB server.")
