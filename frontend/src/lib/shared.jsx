@@ -7,7 +7,7 @@ import { NoIndex } from "./seo";
 
 export const Brand = ({ light = false, mini = false }) => (
   <Link data-testid="brand-logo" className={`brand ${light ? "brand-light" : ""} ${mini ? "brand-mini" : ""}`} to="/">
-    <span className="brand-mark"><Store size={mini ? 14 : 17} /></span>
+    <span className="brand-mark"><img className="brand-img" src="/logo.png" alt="Situska" /></span>
     {!mini && APP_NAME}
   </Link>
 );
