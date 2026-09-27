@@ -207,33 +207,6 @@ def validate_password(value: str):
     if len(value) < 12 or value.lower() in {"passwordpassword", "123456789012", "qwertyuiop12"}:
         raise HTTPException(400, "Password minimal 12 karakter dan tidak boleh mudah ditebak.")
 
-# Common weak passwords that must never be accepted on self-service registration.
-PASSWORD_BLOCKLIST = {
-    "passwordpassword", "123456789012", "qwertyuiop12",
-    "password123", "qwerty1234", "password", "12345678", "password1",
-}
-
-def validate_password_strength(value: str):
-    """Kebijakan password untuk registrasi mandiri.
-
-    Minimal 8 karakter dan wajib memuat huruf besar, huruf kecil, angka, serta
-    karakter spesial (masing-masing minimal satu). Aturan ini harus sama persis
-    dengan validasi di frontend (Auth.jsx) supaya pengguna tidak ditolak setelah
-    lolos verifikasi WhatsApp.
-    """
-    if len(value) < 8:
-        raise HTTPException(400, "Password minimal 8 karakter.")
-    if not re.search(r"[A-Z]", value):
-        raise HTTPException(400, "Password harus mengandung huruf besar (A-Z).")
-    if not re.search(r"[a-z]", value):
-        raise HTTPException(400, "Password harus mengandung huruf kecil (a-z).")
-    if not re.search(r"[0-9]", value):
-        raise HTTPException(400, "Password harus mengandung angka (0-9).")
-    if not re.search(r"[^A-Za-z0-9]", value):
-        raise HTTPException(400, "Password harus mengandung karakter spesial (mis. @#$!?*%).")
-    if value.lower() in PASSWORD_BLOCKLIST:
-        raise HTTPException(400, "Password tidak boleh mudah ditebak.")
-
 def upload_type_from_bytes(data: bytes):
     """Return the permitted MIME type and extension only for recognised file signatures."""
     if data.startswith(b"\xff\xd8\xff"):
@@ -662,7 +635,7 @@ async def showcase_logo(slug: str):
 async def register(data: RegisterInput, response: Response, request: Request):
     email = data.email.lower().strip()
     if await db.users.find_one({"email": email}): raise HTTPException(409, "Email sudah terdaftar")
-    validate_password_strength(data.password)
+    validate_password(data.password)
     phone_raw = (data.whatsapp or data.phone or "").strip()
     phone = wa_service.normalize_number(phone_raw)
     if phone_raw and not phone:
