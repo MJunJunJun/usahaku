@@ -34,33 +34,58 @@ GOWA_USER = os.environ.get("GOWA_USER", "").strip()
 GOWA_PASS = os.environ.get("GOWA_PASS", "")
 ADMIN_WA_NUMBER = os.environ.get("ADMIN_WA_NUMBER", "")
 WHATSAPP_WEBHOOK_SECRET = os.environ.get("WHATSAPP_WEBHOOK_SECRET", "")
-GOWA_DEVICE_ID = os.environ.get("GOWA_DEVICE_ID", "usahaku")
+GOWA_DEVICE_ID = os.environ.get("GOWA_DEVICE_ID", "").strip()
+_DEVICE_CACHE = {"id": ""}
 
 WA_TIMEOUT = float(os.environ.get("WA_TIMEOUT", "15"))
 
 
 def _headers(extra: dict = None) -> dict:
-    """Header dasar + scoping device (GoWA >= v9 multi-device)."""
-    h = {"X-Device-Id": GOWA_DEVICE_ID}
+    """Header dasar + scoping device (GoWA >= v9 multi-device).
+
+    Device id diambil dari cache ensure_device() supaya selalu menunjuk device
+    yang benar-benar terdaftar di GoWA (bukan nilai default "usahaku").
+    """
+    h = {"X-Device-Id": _DEVICE_CACHE["id"] or GOWA_DEVICE_ID}
     if extra:
         h.update(extra)
     return h
 
 
-async def ensure_device() -> str:
-    """Pastikan ada device terdaftar di GoWA v9; kembalikan device_id."""
+async def ensure_device(force: bool = False) -> str:
+    """Kembalikan device_id yang valid di GoWA (hasil di-cache).
+
+    Urutan: env GOWA_DEVICE_ID bila benar-benar terdaftar -> device yang sudah
+    login -> device pertama -> buat device baru.
+    """
+    if _DEVICE_CACHE["id"] and not force:
+        return _DEVICE_CACHE["id"]
     try:
         async with httpx.AsyncClient(timeout=WA_TIMEOUT) as c:
-            r = await c.get(f"{GOWA_BASE_URL}/devices", auth=_auth(), headers=_headers())
+            r = await c.get(f"{GOWA_BASE_URL}/devices", auth=_auth())
             data = r.json() if r.status_code == 200 else {}
-            results = data.get("results") or []
-            if results:
-                return results[0].get("id", "")
-            # belum ada device -> buat
-            r2 = await c.post(f"{GOWA_BASE_URL}/devices", auth=_auth(), headers=_headers(),
-                              json={"name": GOWA_DEVICE_ID})
+            by_id = {str(d.get("id", "")): d for d in (data.get("results") or []) if d.get("id")}
+            if GOWA_DEVICE_ID and GOWA_DEVICE_ID in by_id:
+                _DEVICE_CACHE["id"] = GOWA_DEVICE_ID
+                return GOWA_DEVICE_ID
+            if GOWA_DEVICE_ID and by_id:
+                log.warning("GOWA_DEVICE_ID %s tidak terdaftar di GoWA; memakai device terdaftar",
+                            GOWA_DEVICE_ID)
+            for did, d in by_id.items():
+                if str(d.get("state", "")).lower() in ("logged_in", "loggedin", "connected"):
+                    _DEVICE_CACHE["id"] = did
+                    return did
+            if by_id:
+                did = next(iter(by_id))
+                _DEVICE_CACHE["id"] = did
+                return did
+            r2 = await c.post(f"{GOWA_BASE_URL}/devices", auth=_auth(),
+                              json={"name": GOWA_DEVICE_ID or "usahaku"})
             d2 = r2.json() if r2.status_code < 300 else {}
-            return (d2.get("results") or {}).get("id", "")
+            new_id = str((d2.get("results") or {}).get("id", ""))
+            if new_id:
+                _DEVICE_CACHE["id"] = new_id
+            return new_id
     except Exception as e:
         log.warning("ensure_device gagal: %s", e)
         return ""
@@ -217,17 +242,24 @@ async def send_text(db, to: str, message: str, *, event: str = "message",
         return result
     try:
         async with httpx.AsyncClient(timeout=WA_TIMEOUT) as c:
-            r = await c.post(
-                f"{GOWA_BASE_URL}/send/message",
-                auth=_auth(),
-                json={"phone": target, "message": message}, headers=_headers(),
-            )
             body = {}
-            try:
-                body = r.json()
-            except Exception:
-                pass
-            ok = 200 <= r.status_code < 300 and not body.get("error")
+            ok = False
+            for attempt in (1, 2):
+                # attempt 2: paksa resolve ulang device (mis. device baru saja dibuat)
+                await ensure_device(force=(attempt == 2))
+                r = await c.post(
+                    f"{GOWA_BASE_URL}/send/message",
+                    auth=_auth(),
+                    json={"phone": target, "message": message}, headers=_headers(),
+                )
+                body = {}
+                try:
+                    body = r.json()
+                except Exception:
+                    pass
+                ok = 200 <= r.status_code < 300 and not body.get("error")
+                if ok or "DEVICE_NOT_FOUND" not in str(body):
+                    break
             result.update({"ok": ok, "response": body})
             if not ok:
                 result["error"] = f"HTTP {r.status_code}: {str(body)[:200]}"
@@ -252,18 +284,24 @@ async def send_image_url(db, to: str, image_url: str, caption: str = "",
         return result
     try:
         async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(
-                f"{GOWA_BASE_URL}/send/image",
-                auth=_auth(),
-                headers=_headers(), json={"phone": target, "caption": caption, "url": image_url,
-                      "view_once": False},
-            )
             body = {}
-            try:
-                body = r.json()
-            except Exception:
-                pass
-            ok = 200 <= r.status_code < 300 and not body.get("error")
+            ok = False
+            for attempt in (1, 2):
+                await ensure_device(force=(attempt == 2))
+                r = await c.post(
+                    f"{GOWA_BASE_URL}/send/image",
+                    auth=_auth(),
+                    headers=_headers(), json={"phone": target, "caption": caption, "url": image_url,
+                          "view_once": False},
+                )
+                body = {}
+                try:
+                    body = r.json()
+                except Exception:
+                    pass
+                ok = 200 <= r.status_code < 300 and not body.get("error")
+                if ok or "DEVICE_NOT_FOUND" not in str(body):
+                    break
             result.update({"ok": ok, "response": body})
             if not ok:
                 result["error"] = f"HTTP {r.status_code}: {str(body)[:200]}"

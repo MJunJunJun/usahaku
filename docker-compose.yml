@@ -38,6 +38,8 @@ services:
       GOWA_BASE_URL: http://usahaku-gowa:3000
       GOWA_USER: admin
       GOWA_PASS: ${GOWA_PASS}
+      # id device GoWA (kosong = otomatis dideteksi dari GET /devices)
+      GOWA_DEVICE_ID: ${GOWA_DEVICE_ID:-}
       WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
     ports:
       - "127.0.0.1:8000:8000"
