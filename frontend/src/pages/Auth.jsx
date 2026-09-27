@@ -21,6 +21,16 @@ function AuthSide() {
   );
 }
 
+// ===== Validasi kekuatan password: min 8 karakter, huruf besar+kecil+angka+karakter spesial =====
+function validatePasswordStrength(password) {
+  if (password.length < 8) return { ok: false, msg: "Password minimal 8 karakter" };
+  if (!/[A-Z]/.test(password)) return { ok: false, msg: "Password harus mengandung huruf besar (A-Z)" };
+  if (!/[a-z]/.test(password)) return { ok: false, msg: "Password harus mengandung huruf kecil (a-z)" };
+  if (!/[0-9]/.test(password)) return { ok: false, msg: "Password harus mengandung angka (0-9)" };
+  if (!/[@#$!?]/.test(password)) return { ok: false, msg: "Password harus mengandung karakter spesial (@#$!?)" };
+  return { ok: true, msg: "" };
+}
+
 export function AuthPage({ register = false }) {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
@@ -35,6 +45,8 @@ export function AuthPage({ register = false }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
+  const [passwordErrors, setPasswordErrors] = useState([]);
+  const [confirmError, setConfirmError] = useState("");
 
   // ===== CEK SESSION: kalau sudah login, arahkan langsung =====
   useEffect(() => {
@@ -51,16 +63,41 @@ export function AuthPage({ register = false }) {
     if (register && !form.name.trim()) return "Nama lengkap wajib diisi";
     if (register && !form.whatsapp.trim()) return "Nomor WhatsApp wajib diisi";
     if (!form.email.trim()) return "Email wajib diisi";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Format email tidak valid";
-    if (form.password.length < 6) return "Password minimal 6 karakter";
-    if (register && form.password !== form.confirmPassword) return "Konfirmasi password tidak cocok";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Format email tidak tidak valid";
+    if (!register) {
+      // Login mode: cukup cek panjang
+      if (form.password.length < 1) return "Password wajib diisi";
+    } else {
+      // Register mode: validasi kekuatan password
+      const pwResult = validatePasswordStrength(form.password);
+      if (!pwResult.ok) return pwResult.msg;
+      
+      // Cek konfirmasi password
+      if (form.password !== form.confirmPassword) return "Konfirmasi password tidak cocok";
+      if (!form.confirmPassword.trim()) return "Konfirmasi password wajib diisi";
+    }
     return null;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErr("");
+    setPasswordErrors([]);
+    setConfirmError("");
     
+    if (register) {
+      // ---- VALIDASI KOMPLEKSITAS PASSWORD SEBELUM KIRIM WA CODE ----
+      const strength = validatePasswordStrength(form.password);
+      if (!strength.ok) {
+        setErr(strength.msg);
+        return;
+      }
+      if (form.password !== form.confirmPassword) {
+        setErr("Konfirmasi password tidak cocok");
+        return;
+      }
+    }
+
     const validationErr = validateForm();
     if (validationErr) {
       setErr(validationErr);
@@ -171,15 +208,16 @@ export function AuthPage({ register = false }) {
               <div className="password-input-wrap">
                 <input
                   data-testid={`${register ? "register" : "login"}-password-input`}
-                  required
-                  minLength={6}
+                  required={!register}
+                  minLength={register ? 8 : 1}
                   type={showPassword ? "text" : "password"}
                   name="password"
                   value={form.password}
                   onChange={handleInputChange}
-                  placeholder="Minimal 6 karakter"
+                  placeholder={register ? "Min. 8 karakter, ada huruf besar+kecil+angka+@#$!?" : "Masukkan password"}
                   autoComplete={register ? "new-password" : "current-password"}
                   disabled={busy}
+                  aria-describedby={register ? "pw-hint" : undefined}
                 />
                 <button
                   type="button"
@@ -191,6 +229,11 @@ export function AuthPage({ register = false }) {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {register && (
+                <span id="pw-hint" style={{ fontSize: 12, color: "#94a3b8", marginTop: 2, display: "block" }}>
+                  ⚠️ Min. 8 karakter • Huruf besar (A-Z) • Huruf kecil (a-z) • Angka (0-9) • Karakter spesial (@#$!?)
+                </span>
+              )}
             </label>
             
             {register && (
@@ -200,12 +243,12 @@ export function AuthPage({ register = false }) {
                   <input
                     data-testid="register-confirm-input"
                     required
-                    minLength={6}
+                    minLength={8}
                     type={showPassword ? "text" : "password"}
                     name="confirmPassword"
                     value={form.confirmPassword}
                     onChange={handleInputChange}
-                    placeholder="Ulangi password"
+                    placeholder="Ulangi password yang sama"
                     autoComplete="new-password"
                     disabled={busy}
                   />
