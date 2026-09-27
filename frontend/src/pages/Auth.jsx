@@ -21,14 +21,23 @@ function AuthSide() {
   );
 }
 
-// ===== Validasi kekuatan password: min 8 karakter, huruf besar+kecil+angka+karakter spesial =====
+// ===== Validasi kekuatan password: min 8 karakter, huruf besar+kecil+angka+karakter spesial (bebas) =====
 function validatePasswordStrength(password) {
   if (password.length < 8) return { ok: false, msg: "Password minimal 8 karakter" };
   if (!/[A-Z]/.test(password)) return { ok: false, msg: "Password harus mengandung huruf besar (A-Z)" };
   if (!/[a-z]/.test(password)) return { ok: false, msg: "Password harus mengandung huruf kecil (a-z)" };
   if (!/[0-9]/.test(password)) return { ok: false, msg: "Password harus mengandung angka (0-9)" };
-  if (!/[@#$!?]/.test(password)) return { ok: false, msg: "Password harus mengandung karakter spesial (@#$!?)" };
+  // Karakter spesial BEBAS apa saja (bukan daftar terbatas): @ # $ ! ? * % & - _ + = . , ; : / ~ ^ ( ) [ ] { } dll.
+  // Dipakai negasi non-alfanumerik supaya aturannya identik dengan backend (validate_password_strength).
+  if (!/[^A-Za-z0-9]/.test(password)) return { ok: false, msg: "Password harus mengandung karakter spesial (bebas, mis. @ # $ ! ? * %)" };
   return { ok: true, msg: "" };
+}
+
+// ===== Status konfirmasi password untuk indikator real-time (hijau = cocok, merah = belum sama) =====
+function confirmPasswordState(password, confirmPassword) {
+  if (!confirmPassword) return { status: "empty", msg: "" };
+  if (password === confirmPassword) return { status: "match", msg: "Konfirmasi password cocok" };
+  return { status: "mismatch", msg: "Konfirmasi password belum sama" };
 }
 
 export function AuthPage({ register = false }) {
@@ -63,7 +72,7 @@ export function AuthPage({ register = false }) {
     if (register && !form.name.trim()) return "Nama lengkap wajib diisi";
     if (register && !form.whatsapp.trim()) return "Nomor WhatsApp wajib diisi";
     if (!form.email.trim()) return "Email wajib diisi";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Format email tidak tidak valid";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Format email tidak valid";
     if (!register) {
       // Login mode: cukup cek panjang
       if (form.password.length < 1) return "Password wajib diisi";
@@ -214,7 +223,7 @@ export function AuthPage({ register = false }) {
                   name="password"
                   value={form.password}
                   onChange={handleInputChange}
-                  placeholder={register ? "Min. 8 karakter, ada huruf besar+kecil+angka+@#$!?" : "Masukkan password"}
+                  placeholder={register ? "Min. 8 karakter, ada huruf besar+kecil+angka+karakter spesial" : "Masukkan password"}
                   autoComplete={register ? "new-password" : "current-password"}
                   disabled={busy}
                   aria-describedby={register ? "pw-hint" : undefined}
@@ -231,7 +240,7 @@ export function AuthPage({ register = false }) {
               </div>
               {register && (
                 <span id="pw-hint" style={{ fontSize: 12, color: "#94a3b8", marginTop: 2, display: "block" }}>
-                  ⚠️ Min. 8 karakter • Huruf besar (A-Z) • Huruf kecil (a-z) • Angka (0-9) • Karakter spesial (@#$!?)
+                  ⚠️ Min. 8 karakter • Huruf besar (A-Z) • Huruf kecil (a-z) • Angka (0-9) • Karakter spesial (bebas, mis. @ # $ ! ? * %)
                 </span>
               )}
             </label>
@@ -262,6 +271,26 @@ export function AuthPage({ register = false }) {
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {(() => {
+                  // Indikator real-time: langsung hijau kalau sama, merah kalau belum sama.
+                  const c = confirmPasswordState(form.password, form.confirmPassword);
+                  if (c.status === "empty") return null;
+                  const ok = c.status === "match";
+                  return (
+                    <span
+                      data-testid="register-confirm-feedback"
+                      role="status"
+                      aria-live="polite"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, marginTop: 4,
+                        fontSize: 12, fontWeight: 600, color: ok ? "#16a34a" : "#dc2626",
+                      }}
+                    >
+                      {ok ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                      {c.msg}
+                    </span>
+                  );
+                })()}
               </label>
             )}
             
