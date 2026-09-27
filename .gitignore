@@ -102,3 +102,7 @@ patch_docker_compose.py
 nginx.conf
 !backend/.env.example
 !.env.example
+
+# Local backup files (never commit)
+*.bak
+*.bak.*
