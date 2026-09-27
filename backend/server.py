@@ -10,7 +10,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
-import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio, hashlib, time
+import os, uuid, re, secrets, logging, json, requests, bcrypt, jwt, asyncio, hashlib, time, unicodedata
 from collections import defaultdict, deque
 import hmac as _hmac
 try:
@@ -303,6 +303,52 @@ async def enforce_rate_limit(request: Request, scope: str, subject: str, limit: 
 
 def slugify(text):
     return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-") or "website"
+
+# ===== Alamat toko (dipakai sebagai subdomain, mis. kopi-senja.situska.com) =====
+# Aturan: hanya huruf kecil, angka, dan tanda hubung "-". Karakter khusus seperti
+# _ * " ' : ; ! ? / \ | @ # % & ( ) [ ] { } , . tidak diizinkan.
+STORE_ADDRESS_MAX = 30
+
+def slugify_store_address(text: str) -> str:
+    """Normalisasi alamat toko. Harus sama persis dengan slugifyAddress() di frontend."""
+    decomposed = unicodedata.normalize("NFD", text or "")
+    plain = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")  # Café -> Cafe
+    slug = re.sub(r"[\s_]+", "-", plain.lower())
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")
+    if len(slug) > STORE_ADDRESS_MAX:
+        slug = slug[:STORE_ADDRESS_MAX]
+        slug = slug[:slug.rfind("-")] if "-" in slug else slug
+        slug = slug.strip("-")
+    return slug
+
+async def available_address_variants(base: str, site_id: str = ""):
+    """Cari alamat alternatif yang masih kosong untuk usulan ke pengguna.
+
+    - numbered: tambahkan angka mulai dari 1 (kopisenja -> kopisenja1).
+    - lettered: gandakan huruf terakhir (kopisenja -> kopisenjaa, tenun -> tenunn).
+    """
+    if not base:
+        return "", ""
+    async def taken(candidate: str) -> bool:
+        query = {"$or": [{"slug": candidate}, {"storeSlug": candidate}]}
+        if site_id:
+            query["id"] = {"$ne": site_id}
+        return bool(await db.websites.find_one(query, {"_id": 0, "id": 1}))
+    numbered = ""
+    for number in range(1, 21):
+        candidate = f"{base}{number}"
+        if not await taken(candidate):
+            numbered = candidate
+            break
+    lettered = ""
+    candidate = base
+    for _ in range(3):
+        candidate = f"{candidate}{base[-1]}"
+        if not await taken(candidate):
+            lettered = candidate
+            break
+    return numbered, lettered
 
 async def current_user(request: Request):
     raw = request.cookies.get("access_token") or request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -835,10 +881,10 @@ async def create_website(data: WebsiteInput, user=Depends(current_user)):
         )
         user.update({"subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": trial_start.isoformat(), "trialEndDate": trial_end.isoformat()})
         await notify(user["id"], "Masa Gratis 30 hari dimulai", "Website pertama berhasil dibuat. Masa Gratis Anda aktif selama 30 hari.")
-    requested_slug = slugify(data.storeSlug or data.businessName)
+    requested_slug = slugify_store_address(data.storeSlug or data.businessName) or "website"
     duplicate = await db.websites.find_one({"$or": [{"slug": requested_slug}, {"storeSlug": requested_slug}]}, {"_id": 0})
     if duplicate:
-        raise HTTPException(409, "Alamat toko sudah digunakan. Silakan pilih alamat lain.")
+        raise HTTPException(409, "Alamat toko sudah digunakan. Pilih salah satu alamat yang tersedia, lalu coba lagi.")
     t_style = data.templateStyle or "modern"
     t_config = data.themeConfig or {"primary": "#0077B6", "accent": "#03045E", "style": t_style}
     if "style" not in t_config: t_config["style"] = t_style
@@ -907,21 +953,24 @@ async def delete_article(article_id: str, user=Depends(current_user)):
 
 @api.get("/store-address/check")
 async def check_store_address(slug: str, siteId: str = "", user=Depends(current_user)):
-    normalized = slugify(slug)
-    if not slug.strip():
-        return {"slug": "", "available": False, "domain": ""}
+    normalized = slugify_store_address(slug)
+    if not normalized:
+        return {"slug": "", "available": False, "domain": "", "numbered": "", "lettered": ""}
     query = {"$or": [{"slug": normalized}, {"storeSlug": normalized}]}
     if siteId:
         query["id"] = {"$ne": siteId}
     duplicate = await db.websites.find_one(query, {"_id": 0, "id": 1})
-    return {"slug": normalized, "available": not bool(duplicate), "domain": f"{normalized}.{PUBLIC_SITE_DOMAIN}"}
+    numbered = lettered = ""
+    if duplicate:
+        numbered, lettered = await available_address_variants(normalized, siteId)
+    return {"slug": normalized, "available": not bool(duplicate), "domain": f"{normalized}.{PUBLIC_SITE_DOMAIN}", "numbered": numbered, "lettered": lettered}
 
 @api.put("/websites/{site_id}")
 async def update_website(site_id: str, data: WebsiteInput, user=Depends(current_user)):
     site = await owned_site(site_id, user)
     updates = data.model_dump()
-    requested_slug = slugify(updates.get("storeSlug") or site.get("storeSlug") or site.get("slug") or site["businessName"])
-    current_slug = site.get("storeSlug") or site.get("slug") or slugify(site["businessName"])
+    requested_slug = slugify_store_address(updates.get("storeSlug") or site.get("storeSlug") or site.get("slug") or site["businessName"]) or "website"
+    current_slug = site.get("storeSlug") or site.get("slug") or slugify_store_address(site["businessName"])
     is_free = user.get("planSlug") == "trial"
     if is_free:
         # Nama usaha adalah identitas permanen untuk website Gratis.
@@ -1371,7 +1420,7 @@ async def publish(site_id: str, user=Depends(current_user)):
     if not is_owner_active(user):
         raise HTTPException(403, "Website hanya dapat dipublikasikan saat berlangganan aktif.")
     site = await owned_site(site_id, user)
-    slug = site.get("slug") or site.get("storeSlug") or slugify(site["businessName"])
+    slug = site.get("slug") or site.get("storeSlug") or slugify_store_address(site["businessName"])
     duplicate = await db.websites.find_one({"slug": slug, "id": {"$ne": site_id}}, {"_id": 0})
     if duplicate:
         raise HTTPException(409, "Alamat toko sudah digunakan. Silakan ubah alamat toko sebelum dipublikasikan.")

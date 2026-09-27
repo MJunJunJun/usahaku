@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile, FileText } from "lucide-react";
 import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
@@ -143,6 +143,38 @@ const LOGO_COLORS = [
   "#7e22ce", "#be185d", "#dc2626", "#eab308", "#c2410c", "#6b7280", "#1f2937",
 ];
 
+// ===== Alamat toko (subdomain, mis. kopi-senja.situska.com) ==================
+// Aturan: HANYA huruf kecil, angka, dan tanda hubung "-". Karakter khusus
+// seperti _ * " ' : ; ! ? / \ | @ # % & ( ) [ ] { } , . tidak diizinkan.
+// Harus sama persis dengan slugify_store_address() di backend (server.py).
+const ADDRESS_MAX = 30;
+const ADDRESS_FORBIDDEN = /[^a-z0-9\s-]/;
+const addressForbiddenChars = (raw) =>
+  Array.from(new Set((raw || "").toLowerCase().split("").filter((ch) => ADDRESS_FORBIDDEN.test(ch))));
+
+const slugifyAddress = (raw) => {
+  const cleaned = (raw || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // Café -> Cafe
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")                            // spasi dan "_" jadi pemisah
+    .replace(/[^a-z0-9-]/g, "")                         // buang karakter yang tidak diizinkan
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+/, "");
+  return cleaned.slice(0, ADDRESS_MAX + 10);            // sisakan ruang untuk varian berangka
+};
+
+// Dipakai saat generate dari nama usaha: tanda hubung di ujung ikut dibuang,
+// dan panjang dipotong di batas kata supaya subdomain tidak kepanjangan.
+const addressFromName = (name) => {
+  let slug = slugifyAddress(name).replace(/-+$/, "");
+  if (slug.length > ADDRESS_MAX) {
+    const cut = slug.slice(0, ADDRESS_MAX);
+    const at = cut.lastIndexOf("-");
+    slug = (at > 0 ? cut.slice(0, at) : cut).replace(/-+$/, "");
+  }
+  return slug;
+};
+
 export function CreateWebsite() {
   const nav = useNavigate();
   const [step, setStep] = useState(1);
@@ -167,7 +199,12 @@ export function CreateWebsite() {
   const [err, setErr] = useState("");
   const [quotaInfo, setQuotaInfo] = useState(null);
   const [slugState, setSlugState] = useState("");
-  const [slugTouched, setSlugTouched] = useState(false);
+  const [slugWarn, setSlugWarn] = useState("");
+  const [slugSuggestions, setSlugSuggestions] = useState(null);
+  // Tanpa fitur kunci: setiap perubahan nama usaha selalu menimpa alamat otomatis.
+  // Ref ini hanya menandai user sedang mengetik alamat sendiri, supaya saran
+  // berangka tidak menimpa ketikannya saat itu.
+  const slugTouched = useRef(false);
   useEffect(() => { api.get("/dashboard").then(r => setQuotaInfo({ used: r.data.stats.total, quota: r.data.quota, isFreePlan: r.data.user?.planSlug === "trial" })); }, []);
   const quotaFull = quotaInfo && quotaInfo.used >= quotaInfo.quota;
   const productLimit = quotaInfo?.isFreePlan ? 3 : null;
@@ -191,36 +228,70 @@ export function CreateWebsite() {
   };
 
   const changeBusinessName = (businessName) => {
+    // Setiap perubahan nama usaha langsung menimpa alamat otomatis (tanpa fitur kunci).
+    const suggestedSlug = addressFromName(businessName);
+    slugTouched.current = false;
+    setSlugWarn("");
+    setSlugSuggestions(null);
+    setSlugState("");
     setForm((current) => {
-      const suggestedSlug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-      if (logoTemplateId === "custom") return { ...current, businessName, storeSlug: slugTouched ? current.storeSlug : suggestedSlug };
+      if (logoTemplateId === "custom") return { ...current, businessName, storeSlug: suggestedSlug };
       const template = getLogoTemplates(current.category, businessName, logoColor).find((item) => item.id === logoTemplateId);
-      return { ...current, businessName, storeSlug: slugTouched ? current.storeSlug : suggestedSlug, logoUrl: template?.url || current.logoUrl };
+      return { ...current, businessName, storeSlug: suggestedSlug, logoUrl: template?.url || current.logoUrl };
     });
   };
 
   const checkStoreSlug = async () => {
-    if (!form.storeSlug.trim()) { setSlugState(""); return false; }
+    const value = slugifyAddress(form.storeSlug);
+    if (!value) { setSlugState(""); setSlugSuggestions(null); return false; }
     setSlugState("Memeriksa ketersediaan alamat web...");
     try {
-      const r = await api.get(`/store-address/check?slug=${encodeURIComponent(form.storeSlug)}`);
-      setSlugState(r.data.available ? `✓ Alamat tersedia: ${publicSiteHost(r.data.slug)}` : "Alamat toko ini sudah digunakan");
-      return r.data.available;
+      const r = await api.get(`/store-address/check?slug=${encodeURIComponent(value)}`);
+      if (r.data.available) {
+        setSlugSuggestions(null);
+        setSlugState(`✓ Alamat tersedia: ${publicSiteHost(r.data.slug)}`);
+        return true;
+      }
+      const numbered = r.data.numbered || "";
+      const lettered = r.data.lettered || "";
+      setSlugSuggestions(numbered || lettered ? { numbered, lettered } : null);
+      setSlugState("Alamat toko ini sudah digunakan. Pilih salah satu alamat yang tersedia di bawah.");
+      return false;
     } catch (_) { setSlugState("Tidak dapat memeriksa alamat toko"); return false; }
+  };
+
+  const applySlugSuggestion = (slug) => {
+    slugTouched.current = true;
+    setSlugSuggestions(null);
+    setSlugWarn("");
+    setSlugState("");
+    set("storeSlug", slug);
   };
 
   // Check while the user types too, so the result is visible before they leave
   // the first generator step. The click on "Lanjut" repeats the check as the
   // final guard against a race with another user claiming the same address.
+  // Alamat yang berasal dari nama usaha (mode otomatis) langsung dibetulkan
+  // dengan varian berangka dari backend kalau ternyata sudah dipakai.
   useEffect(() => {
-    const value = form.storeSlug.trim();
-    if (!value) return undefined;
+    const value = slugifyAddress(form.storeSlug);
+    if (!value) { setSlugState(""); setSlugSuggestions(null); return undefined; }
     let active = true;
     const timer = window.setTimeout(async () => {
       setSlugState("Memeriksa ketersediaan alamat web...");
       try {
         const r = await api.get(`/store-address/check?slug=${encodeURIComponent(value)}`);
-        if (active) setSlugState(r.data.available ? `✓ Alamat tersedia: ${publicSiteHost(r.data.slug)}` : "Alamat toko ini sudah digunakan");
+        if (!active) return;
+        if (r.data.available) {
+          setSlugSuggestions(null);
+          setSlugState(`✓ Alamat tersedia: ${publicSiteHost(r.data.slug)}`);
+          return;
+        }
+        const numbered = r.data.numbered || "";
+        const lettered = r.data.lettered || "";
+        setSlugSuggestions(numbered || lettered ? { numbered, lettered } : null);
+        setSlugState("Alamat toko ini sudah digunakan.");
+        if (!slugTouched.current && numbered) setForm((current) => ({ ...current, storeSlug: numbered }));
       } catch (_) {
         if (active) setSlugState("Tidak dapat memeriksa alamat toko");
       }
@@ -348,8 +419,40 @@ export function CreateWebsite() {
               <label>Nama usaha<input data-testid="business-name-input" value={form.businessName} onChange={e => changeBusinessName(e.target.value)} placeholder="Contoh: Kopi Senja" required /></label>
           <label>Jenis usaha<select data-testid="business-category-select" value={form.category} onChange={e => changeCategory(e.target.value)}>{CATEGORIES.map(x => <option key={x}>{x}</option>)}</select></label>
           <label className="full">Alamat toko
-            <input data-testid="store-address-input" value={form.storeSlug} onChange={e => { setSlugTouched(true); set("storeSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-")); setSlugState(""); }} onBlur={checkStoreSlug} placeholder="contoh: kopi-senja" required />
-            <small className={slugState.startsWith("✓") ? "text-sky-600" : slugState.startsWith("Memeriksa") ? "text-slate-500" : slugState ? "text-red-600" : ""}>Alamat ini menjadi <b>{form.storeSlug ? publicSiteHost(form.storeSlug) : "namausaha.situska.com"}</b>. Harus unik dan tidak dapat diubah setelah website Gratis dipublikasikan. {slugState}</small>
+            <input
+              data-testid="store-address-input"
+              value={form.storeSlug}
+              onChange={e => {
+                const raw = e.target.value;
+                const bad = addressForbiddenChars(raw);
+                setSlugWarn(bad.length ? `Karakter ${bad.join(" ")} tidak boleh dipakai. Gunakan huruf, angka, atau tanda hubung (-).` : "");
+                slugTouched.current = true;
+                setSlugSuggestions(null);
+                setSlugState("");
+                set("storeSlug", slugifyAddress(raw));
+              }}
+              onBlur={checkStoreSlug}
+              placeholder="contoh: kopi-senja"
+              maxLength={40}
+              required
+            />
+            <small className={slugState.startsWith("✓") ? "text-sky-600" : slugState.startsWith("Memeriksa") ? "text-slate-500" : slugState ? "text-red-600" : ""}>Alamat ini menjadi <b>{slugifyAddress(form.storeSlug) ? publicSiteHost(slugifyAddress(form.storeSlug)) : "namausaha.situska.com"}</b>. Otomatis dibuat dari nama usaha dan boleh diubah manual. Hanya huruf, angka, dan tanda hubung (-). {slugState}</small>
+            {slugWarn && (
+              <span data-testid="store-address-char-warning" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 12, fontWeight: 600, color: "#dc2626" }}>
+                <X size={14} />{slugWarn}
+              </span>
+            )}
+            {slugSuggestions && (
+              <span data-testid="store-address-suggestions" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 6, fontSize: 12, color: "#334155" }}>
+                <span>Alamat yang tersedia:</span>
+                {slugSuggestions.numbered && (
+                  <button type="button" data-testid="store-address-suggest-number" onClick={() => applySlugSuggestion(slugSuggestions.numbered)} style={{ border: "1px solid #0ea5e9", background: "#f0f9ff", color: "#0369a1", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Pakai {slugSuggestions.numbered}</button>
+                )}
+                {slugSuggestions.lettered && (
+                  <button type="button" data-testid="store-address-suggest-letter" onClick={() => applySlugSuggestion(slugSuggestions.lettered)} style={{ border: "1px solid #0ea5e9", background: "#f0f9ff", color: "#0369a1", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Pakai {slugSuggestions.lettered}</button>
+                )}
+              </span>
+            )}
           </label>
               <div className="full compact-template-field">
                 <div className="field-heading-row">
@@ -541,7 +644,7 @@ export function CreateWebsite() {
         <div className="wizard-actions">
           {step > 1 && <Button data-testid="wizard-previous-button" variant="outline" onClick={() => setStep(step - 1)}>Kembali</Button>}
           {step < 4 ? (
-            <Button data-testid="wizard-next-button" onClick={async () => { if (step === 1 && (!form.businessName || !form.storeSlug)) { setErr("Nama usaha dan alamat toko wajib diisi"); return; } if (step === 1 && !await checkStoreSlug()) { setErr("Silakan gunakan alamat toko yang tersedia sebelum melanjutkan"); return; } setErr(""); setStep(step + 1); }}>
+            <Button data-testid="wizard-next-button" onClick={async () => { if (step === 1 && (!form.businessName || !slugifyAddress(form.storeSlug))) { setErr("Nama usaha dan alamat toko wajib diisi"); return; } if (step === 1 && !await checkStoreSlug()) { setErr("Silakan gunakan alamat toko yang tersedia sebelum melanjutkan"); return; } setErr(""); setStep(step + 1); }}>
               Lanjut <ArrowRight size={16} />
             </Button>
           ) : (
