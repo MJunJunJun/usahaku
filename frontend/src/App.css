@@ -2399,3 +2399,20 @@
 @media(max-width:1279px) and (min-width:1024px){.article-index-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:1023px) and (min-width:768px){.article-index-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+/* Sidebar anti-terpotong */
+.app-shell aside{max-height:100vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.35) transparent}
+.app-shell aside::-webkit-scrollbar{width:8px}
+.app-shell aside::-webkit-scrollbar-thumb{background:rgba(100,116,139,.3);border-radius:99px}
+.app-shell aside>a{width:100%;box-sizing:border-box;min-height:42px;flex:0 0 auto;white-space:nowrap;overflow:hidden}
+.app-shell aside>a>svg{flex:0 0 auto}/* layar sedang: sidebar lebih ramping */
+@media(max-width:1100px){.app-shell aside{width:220px;padding:22px 14px}.app-main{margin-left:220px;width:calc(100% - 220px)}.app-shell aside>a{font-size:11.5px;gap:10px;padding:10px 11px}}
+@media(max-width:900px){.app-shell aside{width:198px;padding:20px 12px}.app-main{margin-left:198px;width:calc(100% - 198px)}}/* layar kecil: menu kiri jadi bar horizontal di atas konten */
+@media(max-width:640px){
+.app-shell{flex-direction:column}
+.app-shell aside{position:sticky;top:0;width:100%;min-height:0;max-height:none;flex-direction:row;align-items:center;gap:6px;padding:10px 12px;border-right:0;border-bottom:1px solid #CAF0F8;overflow-x:auto;overflow-y:hidden;z-index:60}
+.app-shell aside .brand{margin:0 10px 0 0;font-size:0}.app-shell aside .side-label,.app-shell aside .side-spacer,.app-shell aside .trial-mini{display:none}
+.app-shell aside>a{width:auto;min-height:0;font-size:12px;padding:9px 12px;margin:0}
+.app-shell aside .logout{font-size:12px;justify-content:center;padding:9px 12px}
+.app-shell aside .admin-switch{margin:0}
+.app-main{margin-left:0;width:100%;padding:24px 16px}
+}

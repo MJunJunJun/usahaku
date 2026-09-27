@@ -561,7 +561,6 @@ export function WebsiteDetail() {
   const [w, setW] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [command, setCommand] = useState("");
   const [device, setDevice] = useState("desktop");
   const [isFreePlan, setIsFreePlan] = useState(false);
   const load = () => api.get(`/websites/${id}`).then(r => setW(r.data));
@@ -572,12 +571,6 @@ export function WebsiteDetail() {
   const generate = async () => {
     setBusy(true);
     try { await api.post(`/websites/${id}/generate`); await load(); } catch (e) { alert(errorText(e)); }
-    finally { setBusy(false); }
-  };
-  const edit = async () => {
-    if (!command) return;
-    setBusy(true);
-    try { await api.post(`/websites/${id}/ai-edit`, { command }); setCommand(""); await load(); } catch (e) { alert(errorText(e)); }
     finally { setBusy(false); }
   };
   const publish = async () => {
@@ -631,21 +624,8 @@ export function WebsiteDetail() {
         </div>
         <div className="ai-panel">
           <div className="ai-panel-head">
-            <span className="ai-spark"><Sparkles size={17} /></span>
-            <div><b>Bantu edit dengan AI</b><small>Ceritakan perubahan yang kamu mau</small></div>
-          </div>
-          <div className="prompt-box">
-            <textarea data-testid="ai-edit-input" value={command} onChange={e => setCommand(e.target.value)} placeholder={"Contoh: “Buat website saya lebih elegan”"} />
-            <Button data-testid="ai-edit-submit-button" onClick={edit} disabled={busy || !command}>
-              {busy ? <span className="button-spinner" /> : <Sparkles size={15} />} Terapkan
-            </Button>
-          </div>
-          <div className="suggestion-label">COBA PERINTAH INI</div>
-          <div className="suggestions">
-            <button data-testid="ai-suggestion-elegant" onClick={() => setCommand("Buat website saya lebih elegan")}>Buat lebih elegan</button>
-            <button data-testid="ai-suggestion-blue" onClick={() => setCommand("Gunakan warna hijau dan cream")}>Warna hijau & cream</button>
-            <button data-testid="ai-suggestion-headline" onClick={() => setCommand("Buat headline lebih menarik")}>Headline lebih menarik</button>
-            <button data-testid="ai-suggestion-modern" onClick={() => setCommand("Buat lebih modern dan minimalis")}>Modern & minimalis</button>
+            <span className="ai-spark"><LayoutTemplate size={17} /></span>
+            <div><b>Kelola website</b><small>Edit konten, artikel, dan paket</small></div>
           </div>
           {!w.aiGeneratedContent?.heroTitle && (
             <div className="generate-callout">
