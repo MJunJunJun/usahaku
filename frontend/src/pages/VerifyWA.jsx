@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, errorText } from "../lib/api";
 import { AlertCircle, CheckCircle, Loader2, Clock } from "lucide-react";
@@ -40,6 +40,12 @@ export default function VerifyWA() {
     }
   }, [navigate]);
 
+  const handleTimeout = useCallback(() => {
+    setErr("Kode verifikasi sudah kedaluwarsa (10 menit). Silakan daftar ulang.");
+    sessionStorage.removeItem("pendingRegistration");
+    setTimeout(() => navigate("/register"), 3000);
+  }, [navigate]);
+
   useEffect(() => {
     if (timeLeft <= 0) return;
     const timer = setInterval(() => {
@@ -53,7 +59,7 @@ export default function VerifyWA() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeft, handleTimeout]);
 
   useEffect(() => {
     if (resendCooldown > 0) {
@@ -66,12 +72,6 @@ export default function VerifyWA() {
       return () => clearInterval(timer);
     }
   }, [resendCooldown]);
-
-  const handleTimeout = () => {
-    setErr("Kode verifikasi sudah kedaluwarsa (10 menit). Silakan daftar ulang.");
-    sessionStorage.removeItem("pendingRegistration");
-    setTimeout(() => navigate("/register"), 3000);
-  };
 
   const sendWaCode = async () => {
     if (!formData) return;

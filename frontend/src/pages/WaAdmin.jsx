@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bot, BookUser, CheckCircle2, Download, Loader, LogOut, MessageCircle, MessageSquare, Pencil, Plus, QrCode, Radio, RefreshCw, Search, Send, Trash2, User, X, XCircle } from "lucide-react";
 import { api, errorText, formatDateTime } from "../lib/api";
@@ -111,18 +111,17 @@ export function WaCenter() {
   const [cats, setCats] = useState([]);
   const [bcCategory, setBcCategory] = useState("");
 
-  const loadAll = () => {
+  const loadAll = useCallback(() => {
     api.get("/admin/wa/status").then(r => setSt(r.data)).catch(() => {});
     api.get("/admin/wa/logs", { params: logsStatus ? { status: logsStatus } : {} }).then(r => setLogs(r.data)).catch(() => {});
     api.get("/admin/wa/broadcasts").then(r => setBroadcasts(r.data)).catch(() => {});
     api.get("/admin/wa/contacts/categories").then(r => setCats(r.data)).catch(() => {});
-  };
-  useEffect(() => { loadAll(); }, []);
-  useEffect(() => { loadAll(); }, [logsStatus]);
+  }, [logsStatus]);
+  useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => {
     const id = setInterval(loadAll, 5000);
     return () => clearInterval(id);
-  }, [logsStatus]);
+  }, [loadAll]);
 
   const showQr = async () => {
     setQrLoading(true); setErr("");
@@ -308,24 +307,33 @@ export function WaInbox() {
   const navigate = useNavigate();
   const bottomRef = useRef(null);
 
-  const loadConvs = () => {
+  const loadMessages = useCallback(async (cid, scroll) => {
+    try {
+      const r = await api.get(`/admin/wa/conversations/${cid}/messages`);
+      setMessages(r.data);
+      if (scroll) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
+    } catch {}
+  }, []);
+
+  const loadConvs = useCallback(() => {
     const params = {};
     if (filter === "unread") params.filter = "unread";
     if (filter === "AUTO" || filter === "MANUAL") params.filter = filter;
     if (q.trim()) params.q = q.trim();
     api.get("/admin/wa/conversations", { params }).then(r => setConvs(r.data)).catch(() => {});
-  };
-  useEffect(() => { loadConvs(); }, [filter]);
+  }, [filter, q]);
+
+  // muat ulang saat filter/pencarian berubah (pencarian di-debounce 350ms)
   useEffect(() => {
-    const t = setTimeout(loadConvs, 350); // debounce ketik pencarian
+    const t = setTimeout(loadConvs, 350);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [loadConvs]);
 
   // polling semi-realtime
   useEffect(() => {
     const id = setInterval(() => { loadConvs(); if (activeId) loadMessages(activeId, false); }, 5000);
     return () => clearInterval(id);
-  }, [filter, q, activeId]);
+  }, [activeId, loadConvs, loadMessages]);
 
   const activeConv = convs.find(c => c.id === activeId);
 
@@ -337,14 +345,7 @@ export function WaInbox() {
     loadMessages(c.id, true);
   };
 
-  const loadMessages = async (cid, scroll) => {
-    try {
-      const r = await api.get(`/admin/wa/conversations/${cid}/messages`);
-      setMessages(r.data);
-      if (scroll) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
-    } catch {}
-  };
-  useEffect(() => { if (activeId) loadMessages(activeId, false); }, []);
+  useEffect(() => { if (activeId) loadMessages(activeId, false); }, [activeId, loadMessages]);
 
   const closeChat = () => { setActiveId(null); setMessages([]); setReply(""); setMobileShowChat(false); };
 
@@ -509,16 +510,16 @@ export function WaContacts() {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const togglePanel = (name) => { setMsg(""); setErr(""); setPanel(p => (p === name ? null : name)); };
 
-  const loadAll = () => {
+  const loadAll = useCallback(() => {
     const params = {};
     if (q.trim()) params.q = q.trim();
     if (catFilter !== "ALL") params.category = catFilter;
     api.get("/admin/wa/contacts", { params }).then(r => setContacts(r.data)).catch(() => {});
     api.get("/admin/wa/contacts/categories").then(r => setCats(r.data)).catch(() => {});
     api.get("/admin/settings").then(r => setMessageTemplates(r.data.waMessageTemplates || [])).catch(() => {});
-  };
-  useEffect(() => { loadAll(); }, []);
-  useEffect(() => { const t = setTimeout(loadAll, 350); return () => clearTimeout(t); }, [q, catFilter]);
+  }, [q, catFilter]);
+  // debounce (sekalian load awal) supaya tidak request ganda
+  useEffect(() => { const t = setTimeout(loadAll, 350); return () => clearTimeout(t); }, [loadAll]);
 
   const doImport = async () => {
     const numbers = importText.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);

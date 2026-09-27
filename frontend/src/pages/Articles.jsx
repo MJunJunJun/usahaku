@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Plus, Trash2, ExternalLink, FileText, Upload } from "lucide-react";
 import { api, errorText, formatDate, resolveMediaUrl, uploadFile } from "../lib/api";
@@ -36,8 +36,8 @@ function ArticleCoverPicker({ site, value, onChange, onUpload }) {
 export function WebsiteArticles() {
   const { id } = useParams(); const nav = useNavigate();
   const [site, setSite] = useState(null); const [items, setItems] = useState([]); const [form, setForm] = useState(null); const [err, setErr] = useState(""); const [saving, setSaving] = useState(false); const [selectedTemplateId, setSelectedTemplateId] = useState("business-profile");
-  const load = () => Promise.all([api.get(`/websites/${id}`), api.get(`/websites/${id}/articles`)]).then(([s, a]) => { setSite(s.data); setItems(a.data); });
-  useEffect(() => { load().catch((e) => setErr(errorText(e))); }, [id]);
+  const load = useCallback(() => Promise.all([api.get(`/websites/${id}`), api.get(`/websites/${id}/articles`)]).then(([s, a]) => { setSite(s.data); setItems(a.data); }), [id]);
+  useEffect(() => { load().catch((e) => setErr(errorText(e))); }, [load]);
   if (!site) return <Loading text="Memuat artikel..." />;
   const save = async () => { if (!form.title.trim()) return setErr("Judul artikel wajib diisi."); setSaving(true); setErr(""); try { if (form.id) await api.put(`/articles/${form.id}`, form); else await api.post(`/websites/${id}/articles`, form); setForm(null); await load(); } catch (e) { setErr(errorText(e)); } finally { setSaving(false); } };
   const remove = async (article) => { if (!window.confirm(`Hapus artikel “${article.title}”?`)) return; try { await api.delete(`/articles/${article.id}`); await load(); } catch (e) { setErr(errorText(e)); } };

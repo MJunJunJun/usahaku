@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, Search, Check, X, Users, CreditCard, Store, ClipboardList, Sparkles, Plus, Trash2, LayoutTemplate, Upload, Image as ImageIcon } from "lucide-react";
 import { api, errorText, money, formatDate, formatDateTime, resolveMediaUrl, uploadFile } from "../lib/api";
@@ -122,8 +122,8 @@ export function AdminUserDetail() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [action, setAction] = useState({ action: "extend", extraDays: 30, planSlug: "premium-1", additionalWebsites: 0, reason: "" });
-  const load = () => api.get(`/admin/users/${id}`).then(r => setU(r.data));
-  useEffect(() => { load(); }, [id]);
+  const load = useCallback(() => api.get(`/admin/users/${id}`).then(r => setU(r.data)), [id]);
+  useEffect(() => { load(); }, [load]);
   if (!u) return <Loading text="Memuat detail..." />;
 
   const run = async () => {
@@ -263,8 +263,8 @@ export function AdminPaymentDetail() {
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   const [err, setErr] = useState("");
-  const load = () => api.get(`/admin/payments/${id}`).then(r => setP(r.data));
-  useEffect(() => { load(); }, [id]);
+  const load = useCallback(() => api.get(`/admin/payments/${id}`).then(r => setP(r.data)), [id]);
+  useEffect(() => { load(); }, [load]);
   if (!p) return <Loading text="Memuat detail pembayaran..." />;
   const proofUrl = resolveMediaUrl(p.proofUrl);
   const approve = async () => {

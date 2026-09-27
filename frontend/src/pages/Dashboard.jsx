@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile, FileText } from "lucide-react";
 import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
@@ -666,9 +666,9 @@ export function WebsiteDetail() {
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState("desktop");
   const [isFreePlan, setIsFreePlan] = useState(false);
-  const load = () => api.get(`/websites/${id}`).then(r => setW(r.data));
-  const loadAnalytics = () => api.get(`/websites/${id}/analytics`).then(r => setAnalytics(r.data)).catch(() => {});
-  useEffect(() => { load(); loadAnalytics(); api.get("/auth/me").then(r => setIsFreePlan(r.data.planSlug === "trial")).catch(() => {}); }, [id]);
+  const load = useCallback(() => api.get(`/websites/${id}`).then(r => setW(r.data)), [id]);
+  const loadAnalytics = useCallback(() => api.get(`/websites/${id}/analytics`).then(r => setAnalytics(r.data)).catch(() => {}), [id]);
+  useEffect(() => { load(); loadAnalytics(); api.get("/auth/me").then(r => setIsFreePlan(r.data.planSlug === "trial")).catch(() => {}); }, [id, load, loadAnalytics]);
   if (!w) return <Loading text="Menyiapkan website..." />;
 
   const generate = async () => {
