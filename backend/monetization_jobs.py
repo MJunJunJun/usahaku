@@ -114,6 +114,15 @@ class MonetizationJobs:
             site = await self.db.websites.find_one({"id": sid}, {"_id": 0})
             if not site:
                 continue
+            owner = await self._user(card["userId"])
+            _cfg = await self.db.settings.find_one({"id": "platform"}, {"_id": 0}) or {}
+            if rules.is_unlimited(owner, _cfg):
+                # website demo/showcase: tidak pernah dibekukan (kalau sudah beku, dibuka)
+                if site.get("frozenAt"):
+                    if not dry:
+                        await self.db.websites.update_one({"id": sid}, {"$unset": {"frozenAt": "", "frozenByCard": ""}})
+                    actions.append({"act": "unfreeze_site_demo", "card": card["id"], "site": sid})
+                continue
             st = rules.card_state(card, self.now())
             frozen = bool(site.get("frozenAt"))
             if st["freezeWebsite"] and not frozen:
@@ -130,6 +139,10 @@ class MonetizationJobs:
     async def _remind_expiry(self, cards, tpls, dry, actions):
         """Reminder H-7/H-3/H-1 sekali per offset (dilewati bila auto-renew ON & saldo cukup)."""
         for card in cards:
+            owner = await self._user(card["userId"])
+            _cfg = await self.db.settings.find_one({"id": "platform"}, {"_id": 0}) or {}
+            if rules.is_unlimited(owner, _cfg):
+                continue   # website demo/showcase: tanpa reminder langganan
             st = rules.card_state(card, self.now())
             d = st["daysRemaining"]
             if not st["isActive"] or d not in (7, 3, 1):
@@ -163,6 +176,9 @@ class MonetizationJobs:
             if days in list(card.get("remindedEmptyOffsets") or []):
                 continue
             user = await self._user(card["userId"])
+            _cfg = await self.db.settings.find_one({"id": "platform"}, {"_id": 0}) or {}
+            if rules.is_unlimited(user, _cfg):
+                continue   # website demo/showcase: tanpa reminder
             if not dry:
                 await self.db.cards.update_one({"id": card["id"]}, {"$addToSet": {"remindedEmptyOffsets": days}})
             actions.append({"act": "remind_empty", "card": card["id"], "days": days})
@@ -173,6 +189,9 @@ class MonetizationJobs:
         pkgs = cfg.get("packages") or []
         for card in cards:
             user = await self._user(card["userId"])
+            _cfg = await self.db.settings.find_one({"id": "platform"}, {"_id": 0}) or {}
+            if rules.is_unlimited(user, _cfg):
+                continue   # website demo/showcase: tanpa auto-renew
             dec = rules.auto_renew_decision(card, user.get("walletBalance") or 0, pkgs, self.now())
             if dec.get("reason") == "insufficient_balance":
                 if card.get("renewRemindedAt"):

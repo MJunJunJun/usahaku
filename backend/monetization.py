@@ -36,6 +36,23 @@ DEFAULT_PACKAGES = [
 
 DEFAULT_TRIAL = {"days": 14, "maxProducts": 3, "oncePerAccount": True}
 DEFAULT_TOPUP_BONUS = {"enabled": True, "minTopup": 100000, "bonus": 50000, "oncePerAccount": True}
+DEFAULT_UNLIMITED_ROLES = ["SYSTEM"]   # akun sistem/demo (website showcase di halaman utama)
+
+
+def is_unlimited(user, cfg=None):
+    """True bila akun bebas limit (mis. website demo/showcase di halaman utama).
+
+    Efek: tanpa batas jumlah produk, tidak pernah dibekukan, tanpa badge Situska.
+    Sumber aturan TIDAK di-hardcode: settings {id:"platform"} -> `unlimitedRoles`
+    (default ["SYSTEM"]), atau per akun lewat field `unlimited: true`.
+    """
+    if not user:
+        return False
+    if user.get("unlimited") is True:
+        return True
+    roles = (cfg or {}).get("unlimitedRoles") or DEFAULT_UNLIMITED_ROLES
+    role = str(user.get("role") or "").upper()
+    return role in [str(r).upper() for r in roles]
 
 
 # ---------------------------------------------------------------- waktu

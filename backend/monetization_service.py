@@ -54,6 +54,7 @@ class Monetization:
             "topup": st.get("topupBonus") or rules.DEFAULT_TOPUP_BONUS,
             "minTopup": int(st.get("minTopupAmount", 50000)),
             "enabled": bool(st.get("monetizationEnabled")),
+            "unlimitedRoles": st.get("unlimitedRoles") or rules.DEFAULT_UNLIMITED_ROLES,
             "bank": {
                 "bankName": st.get("bankName"),
                 "accountName": st.get("accountName"),
@@ -360,6 +361,13 @@ class Monetization:
     async def quota_info(self, user):
         """Info kuota model kartu (halaman bikin website + dashboard)."""
         cfg = await self.config()
+        if rules.is_unlimited(user, cfg):
+            # akun bebas limit (website demo/showcase): tanpa batas produk & tanpa gate kartu
+            used = await self.db.websites.count_documents({"userId": user["id"]})
+            return {"used": used, "quota": None, "emptyCards": 0, "activeCards": 0, "totalCards": 0,
+                    "cardToUse": None, "trialEligible": False, "trialReason": "unlimited",
+                    "trialDays": int(cfg["trial"]["days"]), "productLimit": None,
+                    "canCreate": True, "message": "", "unlimited": True}
         trial_days = int(cfg["trial"]["days"])
         max_products = int(cfg["trial"]["maxProducts"])
         cards = await self.db.cards.find({"userId": user["id"]}, {"_id": 0}).to_list(length=100)
@@ -384,6 +392,11 @@ class Monetization:
         card = await self.db.cards.find_one({"websiteId": site_id}, {"_id": 0})
         if not card:
             return {"hasCard": False, "frozen": False, "showCredit": True, "isTrial": False, "daysRemaining": None}
+        owner = await self.db.users.find_one({"id": card.get("userId")}, {"_id": 0, "role": 1, "unlimited": 1})
+        if rules.is_unlimited(owner, await self.config()):
+            # website demo/showcase (akun sistem): tidak pernah beku, tanpa badge Situska
+            return {"hasCard": True, "frozen": False, "showCredit": False, "isTrial": False,
+                    "daysRemaining": None, "expiresAt": card.get("expiresAt"), "lastActiveDate": None}
         cv = self.card_view(card)
         days = int(cv.get("daysRemaining") or 0)
         is_trial = bool(card.get("isTrialCard"))
@@ -433,7 +446,11 @@ class Monetization:
         return {"mode": "tidak_ada", "isTrial": False, "card": None, "message": self.gate_message(trial)}
 
     async def product_limit_for_site(self, user_id, site_id):
-        """Masa gratis: maks N produk per website. Kartu berbayar: tanpa batas (None)."""
+        """Masa gratis: maks N produk per website. Kartu berbayar / akun bebas limit: tanpa batas (None)."""
+        cfg = await self.config()
+        owner = await self.db.users.find_one({"id": user_id}, {"_id": 0, "role": 1, "unlimited": 1})
+        if rules.is_unlimited(owner, cfg):
+            return None
         card = await self.db.cards.find_one({"userId": user_id, "websiteId": site_id}, {"_id": 0, "isTrialCard": 1})
         if not card or not card.get("isTrialCard"):
             return None
