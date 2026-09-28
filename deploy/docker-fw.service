@@ -1,0 +1,12 @@
+[Unit]
+Description=Batasi port Docker (3000/8000/27017) hanya untuk LAN via chain DOCKER-USER
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/root/scripts/fw-docker-lan.sh
+
+[Install]
+WantedBy=multi-user.target
