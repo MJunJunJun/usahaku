@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, MessageCircle, Info, Wrench, Circle } from "lucide-react";
+import { ArrowRight, MessageCircle, Info, Wrench, Circle, Calendar } from "lucide-react";
 import { api } from "../lib/api";
 import { Brand, Loading, Button } from "../lib/shared";
 import PublicWebsiteView from "./PublicWebsiteView";
@@ -34,7 +34,7 @@ export function PublicRoute({ hostedSlug = "" }) {
   }, [data]);
   if (error) return <NotFoundPage />;
   if (!data) return <Loading text="Membuka website..." />;
-  if (data.maintenance) return <MaintenancePage slug={slug} businessName={data.businessName} />;
+  if (data.maintenance) return <MaintenancePage slug={slug} businessName={data.businessName} frozen={!!data.frozen} daysRemaining={data.daysRemaining} />;
   const city = data.city || "Indonesia";
   const description = data.description || `${data.businessName} adalah ${data.category} di ${city}. Lihat produk, informasi usaha, lokasi, jam buka, dan cara menghubungi kami.`;
   const image = data.coverImageUrl ? (data.coverImageUrl.startsWith("http") ? data.coverImageUrl : `${originUrl()}${data.coverImageUrl}`) : "";
@@ -53,7 +53,7 @@ export function PublicRoute({ hostedSlug = "" }) {
   return <><SeoHead title={`${data.businessName} — ${data.category} di ${city}`} description={description} image={image} canonical={siteUrl} robots={data.seoNoIndex ? "noindex, nofollow" : "index, follow"} schema={schema} /><PublicWebsiteView data={data} /></>;
 }
 
-function MaintenancePage({ slug, businessName }) {
+function MaintenancePage({ slug, businessName, frozen = false }) {
   return (
     <div className="maintenance-page">
       <header className="maintenance-header">
@@ -61,18 +61,27 @@ function MaintenancePage({ slug, businessName }) {
       </header>
       <main className="maintenance-main">
         <div className="maintenance-card">
-          <div className="maintenance-icon"><Wrench size={40} /></div>
+          <div className="maintenance-icon">{frozen ? <Calendar size={38} /> : <Wrench size={40} />}</div>
           <div className="eyebrow">STATUS WEBSITE</div>
-          <h1>Maaf, Website Sedang Dalam Pemeliharaan.</h1>
-          <p>Website {businessName ? <b>{businessName}</b> : "ini"} sedang dalam pemeliharaan sementara. Silakan kembali beberapa saat lagi.</p>
+          {frozen ? (
+            <>
+              <h1>Masa aktif website ini sudah habis.</h1>
+              <p>Website {businessName ? <b>{businessName}</b> : "ini"} dinonaktifkan sementara karena masa aktif kartu langganannya sudah habis. Semua data tetap tersimpan dan otomatis aktif lagi begitu masa aktifnya diperpanjang.</p>
+            </>
+          ) : (
+            <>
+              <h1>Maaf, Website Sedang Dalam Pemeliharaan.</h1>
+              <p>Website {businessName ? <b>{businessName}</b> : "ini"} sedang dalam pemeliharaan sementara. Silakan kembali beberapa saat lagi.</p>
+            </>
+          )}
           <div className="maintenance-divider" />
           <div className="maintenance-owner">
             <Info size={16} />
             <div>
               <b>Apakah Anda pemilik website ini?</b>
-              <span>Masuk untuk mengaktifkan kembali website Anda.</span>
+              <span>{frozen ? "Masuk dan perpanjang masa aktif kartunya untuk mengaktifkan kembali." : "Masuk untuk mengaktifkan kembali website Anda."}</span>
             </div>
-            <Link data-testid="owner-info-link" className="btn btn-primary" to={`/owner-access/${slug}`}>Informasi untuk Pemilik <ArrowRight size={15} /></Link>
+            <Link data-testid="owner-info-link" className="btn btn-primary" to={frozen ? "/dashboard/subscription" : `/owner-access/${slug}`}>{frozen ? "Perpanjang masa aktif" : "Informasi untuk Pemilik"} <ArrowRight size={15} /></Link>
           </div>
         </div>
         <a data-testid="maintenance-home" className="text-link" href="/">Kembali ke {APP_NAME} →</a>

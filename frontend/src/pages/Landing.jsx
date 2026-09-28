@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, ChevronRight, Menu, X, Sparkles } from "lucide-react";
+import { api } from "../lib/api";
 import { Brand } from "../lib/shared";
 import { APP_NAME, SEO_ORIGIN, publicSiteHost, publicSiteUrl } from "../lib/config";
 import { SeoHead, originUrl } from "../lib/seo";
@@ -33,16 +34,50 @@ export function PublicFooter() {
 
 const Step = ({ n, title, text }) => <div className="step"><b>{n}</b><div><h3>{title}</h3><p>{text}</p></div></div>;
 const Feature = ({ icon, title, text }) => <div className="feature"><span>{icon}</span><h3>{title}</h3><p>{text}</p></div>;
-const Price = ({ name, price, desc, items, featured, testid }) => (
+const Price = ({ name, price, desc, normal, items, featured, testid }) => (
   <div className={`price-card ${featured ? "featured" : ""}`}>
-    {featured && <span className="popular">PALING DIPILIH</span>}
+    {featured && <span className="popular">🏆 PALING HEMAT</span>}
     <h3>{name}</h3>
+    {normal && <s className="price-normal">{normal}</s>}
     <div className="price">{price}<small>/bulan</small></div>
     <p>{desc}</p>
     <ul>{items.map(i => <li key={i}><Check size={16} />{i}</li>)}</ul>
     <Link data-testid={testid} className={`btn ${featured ? "btn-primary" : "btn-outline"}`} to="/register">Pilih paket <ArrowRight size={15} /></Link>
   </div>
 );
+
+const FALLBACK_PKGS = [
+  { months: 1, days: 30, normalPrice: 100000, promoPrice: 50000, perMonth: 50000, savingLabel: "Hemat 50%", monthLabel: "1 Bulan" },
+  { months: 3, days: 90, normalPrice: 300000, promoPrice: 135000, perMonth: 45000, savingLabel: "Hemat 55%", monthLabel: "3 Bulan" },
+  { months: 6, days: 180, normalPrice: 600000, promoPrice: 250000, perMonth: 41667, savingLabel: "Hemat 58%", monthLabel: "6 Bulan" },
+  { months: 12, days: 360, normalPrice: 1200000, promoPrice: 450000, perMonth: 37500, savingLabel: "Hemat 62,5%", monthLabel: "12 Bulan" },
+];
+
+const rp = (n) => "Rp" + Math.round(Number(n) || 0).toLocaleString("id-ID");
+
+const PriceTable = () => {
+  const [data, setData] = useState(null);
+  useEffect(() => { api.get("/packages").then((r) => setData(r.data)).catch(() => {}); }, []);
+  const pkgs = data && data.packages && data.packages.length ? data.packages : FALLBACK_PKGS;
+  const trialDays = (data && data.trial && data.trial.days) || 14;
+  const maxProducts = (data && data.trial && data.trial.maxProducts) || 3;
+  return (
+    <>
+      <div className="pricing-grid">
+        <Price testid="price-trial-button" name="Masa Gratis" price="Rp0" desc={`${trialDays} hari pertama, tanpa bayar`} items={["1 website", "AI generation & editing", `Maksimal ${maxProducts} produk`, "WhatsApp & Google Maps"]} />
+        {pkgs.map((p, i) => (
+          <Price key={p.months} testid={`price-${p.months}-month-button`} featured={i === pkgs.length - 1}
+            name={p.monthLabel || `${p.months} Bulan`}
+            normal={p.normalPrice && p.months ? rp(p.normalPrice / p.months) : null}
+            price={rp(p.perMonth || (p.promoPrice ? p.promoPrice / p.months : 0))}
+            desc={i === pkgs.length - 1 ? "🏆 PALING HEMAT — per bulan" : `${p.savingLabel || p.savingPercent ? "Hemat " + (p.savingLabel || p.savingPercent) : "Promo"} — per bulan`}
+            items={[`Masa aktif ${p.days} hari`, "1 kartu = 1 website", "Katalog produk tanpa batas", "Badge Situska hilang"]} />
+        ))}
+      </div>
+      <p className="pricing-note">Harga promo di atas dihitung <b>per bulan</b> (harga normal dicoret). Bayar via saldo dompet (top up transfer bank) — satu kartu bisa dipakai untuk website mana saja, dan auto-renew bisa dimatikan kapan saja.</p>
+    </>
+  );
+};
 
 const Example = ({ title, category, description, color, slug, testid }) => (
   <a data-testid={testid} className="example-card" href={publicSiteUrl(slug)} style={{ background: color }}>
@@ -179,14 +214,9 @@ export default function Landing() {
         <section id="harga" className="pricing container">
           <div className="section-heading">
             <div><div className="eyebrow">PILIH SESUAI KEBUTUHAN</div><h2>Mulai gratis,<br /><span>tumbuh bersama.</span></h2></div>
-            <p>Mulai dengan fitur dasar, lalu pilih paket yang mendukung langkah berikutnya.</p>
+            <p>Mulai gratis {""}14 hari tanpa bayar, lalu pilih durasi kartu langganan sesuai kebutuhan usaha Anda.</p>
           </div>
-          <div className="pricing-grid">
-            <Price testid="price-trial-button" name="Gratis" price="Rp0" desc="untuk memulai" items={["1 website", "AI generation & editing", "Katalog produk", "WhatsApp & Google Maps"]} />
-            <Price testid="price-basic-button" name="Basic" price="Rp50.000" desc="per bulan" items={["1 website", "Semua fitur AI", "Katalog tanpa batas", "Dukungan prioritas"]} />
-            <Price testid="price-premium-button" featured name="Premium" price="Rp100.000" desc="per bulan" items={["3 website", "Semua fitur AI", "Katalog tanpa batas", "Dukungan prioritas"]} />
-            <Price testid="price-platinum-button" name="Platinum" price="Rp100.000" desc="per bulan · fleksibel" items={["3 website + bisa ditambah", "+Rp25.000 per website tambahan", "Semua fitur AI", "Dukungan prioritas"]} />
-          </div>
+          <PriceTable />
         </section>
 
         <section className="section container product-info-section">

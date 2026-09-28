@@ -353,13 +353,26 @@ def verify_webhook_secret_param(secret_param: str) -> bool:
 # Notifikasi level aplikasi (dipanggil dari alur bisnis)
 # ------------------------------------------------------------------
 
+async def admin_number(db) -> str:
+    """Nomor admin aktif: prioritas Settings (adminWhatsapp), fallback env ADMIN_WA_NUMBER."""
+    try:
+        st = await db.settings.find_one({"id": "platform"}, {"_id": 0, "adminWhatsapp": 1}) or {}
+        num = normalize_number(st.get("adminWhatsapp") or "")
+        if num:
+            return num
+    except Exception as e:
+        log.warning("gagal baca adminWhatsapp dari Settings: %s", e)
+    return ADMIN_WA_NUMBER
+
+
 async def notify_admin(db, text: str, *, event: str, ref_id: str = ""):
-    """Kirim pesan ke nomor admin (ADMIN_WA_NUMBER). Tidak pernah raise."""
-    if not ADMIN_WA_NUMBER:
+    """Kirim pesan ke nomor admin. Tidak pernah raise."""
+    target = await admin_number(db)
+    if not target:
         await _log_wa(db, event=event, target="", message=text, ok=False,
-                      error="ADMIN_WA_NUMBER belum diset", ref_id=ref_id)
+                      error="nomor admin belum diset (Settings adminWhatsapp / ADMIN_WA_NUMBER)", ref_id=ref_id)
         return
-    await send_text(db, ADMIN_WA_NUMBER, text, event=event, ref_id=ref_id)
+    await send_text(db, target, text, event=event, ref_id=ref_id)
 
 
 def fire_and_forget(coro):

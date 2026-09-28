@@ -2421,3 +2421,32 @@
 .brand-mark img,.brand-img{width:100%;height:100%;object-fit:contain;display:block}
 .brand-mini .brand-mark{width:24px;height:24px}
 @media(max-width:640px){.brand-mark{width:26px;height:26px}}
+
+/* Panel admin: Paket & Kartu (Fase 5 monetisasi) */
+.section-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+.table-wrap{overflow-x:auto}
+.pkg-edit-row,.credit-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:8px 0}
+.pkg-edit-row label,.credit-row label{display:flex;flex-direction:column;font-size:12px;gap:4px;color:#4A6B70}
+.pkg-edit-row input,.credit-row input{padding:8px 10px;border:1px solid #CAF0F8;border-radius:10px;min-width:110px}
+.check-line{flex-direction:row!important;align-items:center;gap:6px}
+.form-success{background:#E8F8EF;color:#1B7A45;border-radius:10px;padding:10px 12px;font-size:14px}
+.badge-ok{background:#E8F8EF;color:#1B7A45}
+.icon-button.danger{background:#FDECEC;color:#C0392B;border:0;border-radius:8px;padding:6px;cursor:pointer}
+.price-normal{display:block;color:#8AA5AA;font-size:13px;margin-bottom:2px}
+
+.balance-total { display:flex; flex-direction:column; gap:2px; padding:14px 16px; border-radius:14px;
+  background:#0f172a; border:1px solid rgba(148,163,184,.25); margin-bottom:10px; }
+.balance-total span { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#94a3b8; }
+.balance-total b { font-size:30px; line-height:1.1; color:#f8fafc; }
+.sub-head { margin:16px 0 6px; font-size:14px; color:#e2e8f0; }
+.section-gap { height:14px; }
+.pkg-picker { margin-top:10px; padding:12px; border-radius:12px; background:rgba(15,23,42,.55);
+  border:1px dashed rgba(148,163,184,.35); }
+
+.balance-total{display:flex;flex-direction:column;gap:2px;padding:14px 16px;border-radius:14px;background:#0f172a;border:1px solid rgba(148,163,184,.25);margin-bottom:10px}
+.balance-total span{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}
+.balance-total b{font-size:30px;line-height:1.1;color:#f8fafc}
+.sub-head{margin:16px 0 6px;font-size:14px;color:#e2e8f0}
+.section-gap{height:16px}
+.pkg-picker{margin-top:10px;padding:12px;border-radius:12px;background:rgba(15,23,42,.55);border:1px dashed rgba(148,163,184,.35)}
+.pkg-picker .pkg-grid{margin-top:8px}

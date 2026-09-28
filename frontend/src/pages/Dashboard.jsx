@@ -205,9 +205,11 @@ export function CreateWebsite() {
   // Ref ini hanya menandai user sedang mengetik alamat sendiri, supaya saran
   // berangka tidak menimpa ketikannya saat itu.
   const slugTouched = useRef(false);
-  useEffect(() => { api.get("/dashboard").then(r => setQuotaInfo({ used: r.data.stats.total, quota: r.data.quota, isFreePlan: r.data.user?.planSlug === "trial" })); }, []);
-  const quotaFull = quotaInfo && quotaInfo.used >= quotaInfo.quota;
-  const productLimit = quotaInfo?.isFreePlan ? 3 : null;
+  useEffect(() => { api.get("/dashboard").then(r => setQuotaInfo({ used: r.data.stats.total, quota: r.data.quota, ...(r.data.cardQuota || {}) })); }, []);
+  const quotaFull = !!quotaInfo && quotaInfo.canCreate === false;
+  const productLimit = quotaInfo?.productLimit ?? null;
+  const cardToUse = quotaInfo?.cardToUse || null;
+  const useTrial = !!quotaInfo && quotaInfo.canCreate === true && !cardToUse;
   const set = (key, val) => setForm((current) => ({ ...current, [key]: val }));
   const setSectionCfg = (patch) => setSections((current) => ({ ...current, ...patch }));
 
@@ -378,10 +380,10 @@ export function CreateWebsite() {
         </div>
       </div>
       <div className="wizard-card quota-block-card" data-testid="quota-full-block">
-        <div className="eyebrow">KUOTA PENUH</div>
-        <h2>Kuota websitemu sudah habis.</h2>
-        <p className="form-intro">Paket kamu mengizinkan {quotaInfo.quota} website dan semuanya sudah terpakai ({quotaInfo.used}/{quotaInfo.quota}). Upgrade paket untuk menambah kuota website.</p>
-        <Link data-testid="quota-upgrade-button" className="btn btn-primary" to="/dashboard/subscription">Lihat paket &amp; upgrade <ArrowRight size={15} /></Link>
+        <div className="eyebrow">PERLU KARTU</div>
+        <h2>Belum ada kartu untuk website baru.</h2>
+        <p className="form-intro">{quotaInfo.message || "Beli kartu langganan dulu, atau lepas kartu dari website lain supaya bisa dipakai di sini."}</p>
+        <Link data-testid="quota-upgrade-button" className="btn btn-primary" to="/dashboard/subscription">Beli &amp; kelola kartu <ArrowRight size={15} /></Link>
       </div>
     </div>
   );
@@ -398,10 +400,15 @@ export function CreateWebsite() {
       </div>
       {quotaInfo && (
         <div className="quota-pill" data-testid="create-quota-info">
-          <span>Kuota website terpakai</span>
+          <span>{useTrial ? `Masa gratis ${quotaInfo.trialDays} hari akan dipakai` : cardToUse ? `Kartu "${cardToUse.cardName || cardToUse.name || ""}" siap dipakai` : "Kartu website"}</span>
           <b>{quotaInfo.used} / {quotaInfo.quota}</b>
           <i className="quota-track"><i className="quota-fill" style={{ width: `${Math.min(100, Math.round((quotaInfo.used / Math.max(quotaInfo.quota, 1)) * 100))}%` }} /></i>
         </div>
+      )}
+      {quotaInfo && useTrial && (
+        <p className="form-hint" data-testid="create-trial-hint">
+          Website ini memakai masa gratis {quotaInfo.trialDays} hari (maksimal {quotaInfo.productLimit} produk). Bisa diperpanjang kapan saja dengan kartu langganan.
+        </p>
       )}
       <div className="wizard-steps">
         <span className={step >= 1 ? "active" : ""}><b>1</b> Usaha</span><i />

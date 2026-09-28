@@ -738,9 +738,11 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
             </p>
           </div>
           {articleCount > 0 && <a className="footer-article-link" href={articlesUrl}>Baca artikel</a>}
+          {data.showCredit !== false && (
           <div className="footer-credit">
             <span>Dibuat dengan <a href="/" target="_blank" rel="noreferrer">{APP_NAME}</a> • Platform Website AI UMKM Indonesia</span>
           </div>
+          )}
         </div>
       </footer>
       {/* 10. PRODUCT DETAIL POPUP */}

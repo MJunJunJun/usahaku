@@ -1,373 +1,183 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Check, Sparkles, Upload, MessageCircle } from "lucide-react";
-import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
+import { Wallet, RefreshCw, Plus, Calendar, Gift, Check, MessageCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { api, errorText, money, formatDate } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
-import { APP_NAME } from "../lib/config";
+
+const TOPUP_QUICK = [100000, 200000, 500000, 1000000];
 
 export function Subscription() {
-  const nav = useNavigate();
-  const [plans, setPlans] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [additional, setAdditional] = useState(0);
-  const [settings, setSettings] = useState(null);
-  const [user, setUser] = useState(null);
-  const [payments, setPayments] = useState([]);
+  const [view, setView] = useState(null);
+  const [wallet, setWallet] = useState(null);
+  const [sites, setSites] = useState([]);
+  const [topupAmount, setTopupAmount] = useState(100000);
+  const [pickFor, setPickFor] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+const load = async () => {
+    const [c, w, d] = await Promise.all([api.get("/cards"), api.get("/wallet"), api.get("/dashboard")]);
+    setView(c.data);
+    setWallet(w.data);
+    setSites(d.data.websites || []);
+  };
 
-  useEffect(() => {
-    Promise.all([api.get("/plans"), api.get("/settings/public"), api.get("/auth/me"), api.get("/payments/mine")])
-      .then(([p, s, u, ps]) => { setPlans(p.data); setSettings(s.data); setUser(u.data); setPayments(ps.data); });
-  }, []);
+  useEffect(() => { load().catch((e) => setErr(errorText(e))); }, []);
 
-  if (!plans.length || !settings || !user) return <Loading text="Memuat paket..." />;
+  const run = async (key, fn) => {
+    setBusy(key); setErr(""); setMsg("");
+    try {
+      const r = await fn();
+      await load();
+      setMsg((r && r.data && r.data.message) || "Berhasil");
+      return true;
+    } catch (e) {
+      setErr(errorText(e));
+      return false;
+    } finally { setBusy(""); }
+  };
+const extendCard = (id, m) => run(`ext-${id}-${m}`, () => api.post(`/cards/${id}/purchase`, { months: m, method: "wallet" }));
+  const toggleRenew = (id, on) => run(`ren-${id}`, () => api.patch(`/cards/${id}/autorenew`, { enabled: on }));
+  const topup = () => run("topup", () => api.post("/wallet/topup", { amount: Number(topupAmount), method: "transfer" }));
 
-  const sel = plans.find(p => p.slug === selected);
-  const canAddExtra = sel?.allowsAdditional === true;
-  const total = sel ? sel.monthlyPrice + (canAddExtra ? additional : 0) * (settings.additionalWebsitePrice || 25000) : 0;
-  const pending = payments.find(p => p.status === "PENDING");
+  if (!view || !wallet) return <Loading text="Memuat saldo & masa aktif..." />;
 
-  const planLabel = (slug) => ({ trial: "Gratis", basic: "Basic", premium: "Premium", platinum: "Platinum" })[slug] || "Gratis";
-
-  return (
-    <div className="subscription-page">
-      <div className="page-head compact">
+  const pkgs = view.packages || [];
+  const trial = view.trial || {};
+  const bonus = wallet.topupBonus || null;
+  const byId = {};
+  (sites || []).forEach((s) => { byId[s.id] = s; });
+  const cards = view.cards || [];
+  const attached = cards.filter((c) => c.websiteId);
+  const loose = cards.filter((c) => !c.websiteId);
+return (
+    <div className="page-wrap">
+      <div className="dash-head" data-testid="subscription-head">
         <div>
-          <div className="eyebrow">PAKET SITUSKA</div>
-          <h1>Pilih ruang untuk tumbuh.</h1>
-          <p>Semua paket dimulai dengan website yang profesional.</p>
+          <div className="eyebrow">LANGGANAN</div>
+          <h1>Saldo &amp; Masa Aktif</h1>
+          <p className="page-sub">Saldo dipakai untuk menambah masa aktif website. Tiap website punya masa aktifnya sendiri.</p>
         </div>
       </div>
+      {msg && <div className="alert-ok" data-testid="subscription-ok">{msg}</div>}
+      {err && <FormError>{err}</FormError>}
 
-      <div className="current-plan-card">
-        <div>
-          <small>STATUS SAAT INI</small>
-          <b>{planLabel(user.planSlug)}</b>
-          <span>
-            Kuota {user.websiteQuota || 1} website
-            {user.subscriptionStatus === "TRIAL_PENDING" && " · Buat 1 website gratis"}
-            {user.subscriptionStatus === "TRIAL_ACTIVE" && user.trialEndDate && ` · Gratis berakhir ${formatDate(user.trialEndDate)}`}
-            {(user.subscriptionStatus === "ACTIVE" && user.subscriptionExpiryDate) && ` · Berakhir ${formatDate(user.subscriptionExpiryDate)}`}
-            {user.subscriptionStatus === "EXPIRED" && ` · Berakhir ${formatDate(user.subscriptionExpiryDate)}`}
-          </span>
+      <section className="wizard-card" data-testid="balance-block">
+        <div className="block-head">
+          <h2><Wallet size={17} /> Informasi saldo</h2>
         </div>
-        <StatusBadge status={user.subscriptionStatus} />
-      </div>
-
-      {(user.subscriptionStatus === "TRIAL_EXPIRED" || user.subscriptionStatus === "EXPIRED") && (
-        <div className="pending-payment-card expired-cta" data-testid="expired-cta-banner">
-          <Sparkles size={20} />
-          <div>
-            <b>{user.subscriptionStatus === "TRIAL_EXPIRED" ? "Paket Gratis kamu sudah tidak aktif." : "Masa langganan kamu sudah berakhir."}</b>
-            <span>Website bisnismu sementara tidak tampil ke pengunjung. Pilih salah satu paket di bawah untuk mengaktifkan kembali — pembayaran bisa dilakukan langsung lewat halaman ini.</span>
-          </div>
+        <div className="balance-total" data-testid="wallet-balance">
+          <span>Total saldo</span>
+          <b>{money(wallet.balance)}</b>
         </div>
-      )}
-
-      {pending && (
-        <div className="pending-payment-card">
-          <Sparkles size={20} />
-          <div>
-            <b>Pembayaran sedang diverifikasi.</b>
-            <span>Paket {pending.planName} · Rp{money(pending.amount)} · dikirim {formatDate(pending.createdAt)}</span>
-          </div>
-          <Link data-testid="view-pending-payment" to={`/dashboard/subscription/payment/${pending.id}`}>Detail →</Link>
+        <p className="form-hint">
+          Saldo dipakai untuk menambah masa aktif website: 1 bulan, 3 bulan, 6 bulan, atau 1 tahun.
+        </p>
+<h3 className="sub-head">Top up saldo</h3>
+        <p className="form-hint" data-testid="topup-bonus-note">
+          {bonus
+            ? (wallet.bonusClaimed
+              ? "Bonus top up pertama sudah pernah diklaim."
+              : `Top up pertama minimal ${money(bonus.minTopup)} dapat bonus ${money(bonus.bonus)} — 1 kali per akun.`)
+            : `Top up pertama minimal ${money(100000)} dapat bonus ${money(50000)} — 1 kali per akun.`}
+        </p>
+        <div className="attach-row">
+          {TOPUP_QUICK.map((a) => (
+            <button key={a} type="button" data-testid={`topup-quick-${a}`}
+              className={Number(topupAmount) === a ? "pkg-card active" : "pkg-card"}
+              onClick={() => setTopupAmount(a)}>
+              <b className="pkg-price">{money(a)}</b>
+            </button>
+          ))}
         </div>
-      )}
-
-      <div className="subscription-grid">
-        {plans.map(p => (
-          <div data-testid={`subscription-plan-${p.slug}`} className={`subscription-card ${selected === p.slug ? "selected" : ""}`} key={p.slug}>
-            <span className="plan-kicker">{p.slug === "premium" ? "PALING DIPILIH" : p.slug === "platinum" ? "PALING FLEKSIBEL" : "PAKET"}</span>
-            <h2>{p.name}</h2>
-            <div className="subscription-price">Rp{money(p.monthlyPrice)}<small>/bulan</small></div>
-            <p>{p.allowsAdditional ? `${p.websiteLimit} website (bisa ditambah)` : `Hingga ${p.websiteLimit} website bisnis`}</p>
-            <ul>{(p.features || []).map((f, i) => <li key={i}><Check size={15} />{f}</li>)}</ul>
-            <Button data-testid={`choose-plan-${p.slug}-button`} variant={selected === p.slug ? "primary" : "outline"} onClick={() => { setSelected(p.slug); setAdditional(0); }}>
-              {selected === p.slug ? "Dipilih" : "Pilih paket"}
-            </Button>
-          </div>
-        ))}
-      </div>
-
-      {selected && (
-        <div className="payment-summary">
-          <div className="summary-head">
-            <div><div className="eyebrow">RINGKASAN PEMBAYARAN</div><h2>Konfirmasi paket kamu</h2></div>
-          </div>
-          {canAddExtra && (
-            <div className="additional-selector">
-              <div>
-                <b>Tambah website ekstra</b>
-                <span>+Rp{money(settings.additionalWebsitePrice || 25000)} / bulan per website tambahan</span>
-              </div>
-              <div className="counter">
-                <button data-testid="additional-minus" onClick={() => setAdditional(Math.max(0, additional - 1))}>−</button>
-                <input data-testid="additional-count" readOnly value={additional} />
-                <button data-testid="additional-plus" onClick={() => setAdditional(Math.min(10, additional + 1))}>+</button>
-              </div>
-            </div>
-          )}
-          <div className="summary-rows">
-            <div><span>{sel.name}</span><b>Rp{money(sel.monthlyPrice)}</b></div>
-            {canAddExtra && additional > 0 && (
-              <div><span>{additional} website tambahan</span><b>Rp{money(additional * (settings.additionalWebsitePrice || 25000))}</b></div>
-            )}
-            <div className="summary-total"><span>Total per bulan</span><b data-testid="summary-total">Rp{money(total)}</b></div>
-          </div>
-          <Button data-testid="continue-payment-button" onClick={() => nav(`/dashboard/subscription/pay?plan=${selected}&extra=${additional}`)}>
-            Lanjut ke pembayaran <ArrowRight size={16} />
+<div className="attach-row">
+          <input className="input" type="number" min="10000" data-testid="topup-amount-input"
+            value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} />
+          <Button data-testid="topup-button" disabled={busy === "topup"} onClick={topup}>
+            {busy === "topup" ? "Mengirim..." : `Top up ${money(Number(topupAmount) || 0)}`}
           </Button>
         </div>
-      )}
+        {wallet.bank && (
+          <p className="form-hint" data-testid="bank-info">
+            Transfer ke <b>{wallet.bank.bankName} {wallet.bank.accountNumber}</b> a.n. {wallet.bank.accountName}, lalu kirim bukti ke admin.
+            {" "}<a href={`https://wa.me/${wallet.adminWhatsapp}`} target="_blank" rel="noreferrer" data-testid="topup-wa-admin"><MessageCircle size={13} /> WhatsApp admin</a>
+          </p>
+        )}
+      </section>
+<div className="section-gap" />
 
-      {payments.length > 0 && (
-        <section className="dashboard-section" style={{ marginTop: 32 }}>
-          <div className="section-row"><div><h2>Riwayat pembayaran</h2><p>Semua pengajuan pembayaran kamu.</p></div></div>
-          <div className="payment-history">
-            {payments.map(p => (
-              <div data-testid={`payment-history-${p.id}`} key={p.id} className="payment-row">
-                <div><b>{p.planName}</b><small>{formatDate(p.createdAt)}</small></div>
-                <span>Rp{money(p.amount)}</span>
-                <StatusBadge status={p.status} />
-                <Link className="text-link" to={`/dashboard/subscription/payment/${p.id}`}>Detail →</Link>
+      <section className="wizard-card" data-testid="active-block">
+        <div className="block-head">
+          <h2><Calendar size={17} /> Masa aktif</h2>
+          <span className="block-sub">{attached.length} website</span>
+        </div>
+        {!attached.length && (
+          <p className="empty-text">Belum ada website. Bikin website pertamamu untuk memakai masa gratis {trial && trial.days ? trial.days : 14} hari.</p>
+        )}
+        <div className="cards-list">
+          {attached.map((c) => {
+            const site = byId[c.websiteId] || {};
+            const open = pickFor === c.id;
+            return (
+              <div key={c.id} className="card-item" data-testid={`card-${c.id}`}>
+                <div className="card-item-main">
+                  <b>Masa aktif {site.businessName || site.slug || "website"}</b>
+                  <StatusBadge>{c.stateLabel}</StatusBadge>
+                  {c.isTrialCard && <span className="custom-chip">MASA GRATIS</span>}
+                </div>
+<div className="card-item-meta">
+                  <span><Calendar size={14} /> Sisa <b>{c.daysRemaining} hari</b>{c.lastActiveDate ? ` — aktif s/d ${formatDate(c.lastActiveDate)}` : ""}</span>
+                </div>
+                <div className="card-item-actions">
+                  <Button data-testid={`add-active-${c.id}`} onClick={() => setPickFor(open ? null : c.id)}>
+                    <Plus size={14} /> Tambahkan masa aktif
+                  </Button>
+                  <Button className="btn-ghost" data-testid={`renew-${c.id}`} disabled={!!busy} onClick={() => toggleRenew(c.id, !c.autoRenew)}>
+                    <RefreshCw size={14} /> Auto renewal: {c.autoRenew ? "AKTIF" : "MATI"}
+                  </Button>
+                </div>
+{open && (
+                  <div className="pkg-picker" data-testid={`picker-${c.id}`}>
+                    <p className="form-hint">Pilih durasi masa aktif yang mau ditambahkan ke website ini:</p>
+                    <div className="pkg-grid">
+                      {pkgs.map((p) => (
+                        <button key={p.months} type="button" data-testid={`extend-${c.id}-${p.months}`}
+                          className="pkg-card" disabled={busy === `ext-${c.id}-${p.months}`}
+                          onClick={() => extendCard(c.id, p.months)}>
+                          <span className="pkg-month">{p.monthLabel}</span>
+<b className="pkg-price">{money(p.price)}</b>
+                          <span className="pkg-per">{money(p.perMonth)}/bln</span>
+                          <span className="pkg-save">{p.savingLabel}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {wallet.balance <= 0 && (
+                      <p className="form-hint">Saldo kamu masih 0 — top up dulu di bagian Informasi saldo di atas.</p>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-export function PaymentFlow() {
-  const nav = useNavigate();
-  const params = new URLSearchParams(window.location.search);
-  const planSlug = params.get("plan");
-  const extra = Number(params.get("extra") || 0);
-  const [plan, setPlan] = useState(null);
-  const [settings, setSettings] = useState(null);
-  const [user, setUser] = useState(null);
-  const [proofUrl, setProofUrl] = useState("");
-  const [proofPreview, setProofPreview] = useState("");
-  const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10));
-  const [notes, setNotes] = useState("");
-  const [couponCode, setCouponCode] = useState("");
-  const [coupon, setCoupon] = useState(null);
-  const [couponErr, setCouponErr] = useState("");
-  const [step, setStep] = useState(1);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [payment, setPayment] = useState(null);
-
-  useEffect(() => {
-    Promise.all([api.get("/plans"), api.get("/settings/public"), api.get("/auth/me")])
-      .then(([p, s, u]) => {
-        setPlan(p.data.find(x => x.slug === planSlug));
-        setSettings(s.data); setUser(u.data);
-      });
-  }, [planSlug]);
-
-  if (!plan || !settings || !user) return <Loading text="Memuat pembayaran..." />;
-  const baseAmount = plan.monthlyPrice + extra * (settings.additionalWebsitePrice || 25000);
-  const applyCouponDiscount = (amt) => {
-    if (!coupon) return { finalAmount: amt, bonusDays: 0 };
-    if (coupon.discountType === "percentage") return { finalAmount: Math.max(0, amt * (1 - coupon.discountValue / 100)), bonusDays: 0 };
-    if (coupon.discountType === "fixed") return { finalAmount: Math.max(0, amt - coupon.discountValue), bonusDays: 0 };
-    if (coupon.discountType === "days") return { finalAmount: amt, bonusDays: coupon.discountValue };
-    return { finalAmount: amt, bonusDays: 0 };
-  };
-  const { finalAmount, bonusDays } = applyCouponDiscount(baseAmount);
-
-  const uploadProof = async (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    setBusy(true); setErr("");
-    try {
-      const r = await uploadFile(f);
-      setProofUrl(r.url);
-      setProofPreview(f.type.startsWith("image/") ? URL.createObjectURL(f) : "");
-    } catch (ex) { setErr(errorText(ex)); }
-    finally { setBusy(false); }
-  };
-
-  const validateCoupon = async () => {
-    if (!couponCode.trim()) return;
-    setCouponErr("");
-    try {
-      const r = await api.post("/coupons/validate", { code: couponCode });
-      setCoupon(r.data);
-    } catch (e) { setCoupon(null); setCouponErr(errorText(e)); }
-  };
-
-  const submit = async () => {
-    if (finalAmount > 0 && !proofUrl) { setErr("Silakan upload bukti transfer terlebih dahulu."); return; }
-    setBusy(true); setErr("");
-    try {
-      const r = await api.post("/payments", { planSlug: plan.slug, additionalWebsiteCount: extra, transferDate, proofUrl: proofUrl || "", notes, couponCode: coupon ? coupon.code : "" });
-      setPayment(r.data);
-      setStep(3);
-    } catch (e) { setErr(errorText(e)); }
-    finally { setBusy(false); }
-  };
-
-  const wa = () => {
-    const msg = finalAmount === 0
-      ? `Halo Admin ${APP_NAME}, saya mengaktifkan paket ${plan.name} (gratis). Email akun saya: ${user.email}. Mohon aktivasi paket saya.`
-      : `Halo Admin ${APP_NAME}, saya sudah melakukan pembayaran paket ${plan.name} sebesar Rp${money(finalAmount)}. Email akun saya: ${user.email}. Saya akan mengirimkan bukti transfer.`;
-    const num = (settings.adminWhatsapp || "").replace(/\D/g, "");
-    return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-  };
-
-  return (
-    <div className="wizard-page">
-      <div className="page-head compact">
-        <div>
-          <Link data-testid="payment-back" className="back-link" to="/dashboard/subscription">← Kembali</Link>
-          <h1>Selesaikan pembayaran</h1>
-          <p>Transfer bank manual · Verifikasi 1-24 jam</p>
+            );
+          })}
         </div>
-      </div>
-      <div className="wizard-steps">
-        <span className={step >= 1 ? "active" : ""}><b>1</b> Transfer</span><i />
-        <span className={step >= 2 ? "active" : ""}><b>2</b> Bukti</span><i />
-        <span className={step >= 3 ? "active" : ""}><b>3</b> Selesai</span>
-      </div>
-
-      {step === 1 && (
-        <div className="wizard-card">
-          <div className="eyebrow">INSTRUKSI TRANSFER</div>
-          <h2>Transfer ke rekening di bawah</h2>
-          <div className="bank-info">
-            <div><small>BANK</small><b>{settings.bankName}</b></div>
-            <div><small>ATAS NAMA</small><b>{settings.accountName}</b></div>
-            <div><small>NOMOR REKENING</small><b data-testid="bank-account-number">{settings.accountNumber}</b></div>
-            <div><small>TOTAL TRANSFER</small><b data-testid="payment-amount">Rp{money(finalAmount)}{bonusDays > 0 && <small style={{ color: "#0369A1", display: "block", fontSize: 11 }}>+ {bonusDays} hari bonus</small>}</b></div>
+        {!!loose.length && (
+          <p className="form-hint" data-testid="loose-cards">Ada {loose.length} masa aktif belum terpasang ke website — otomatis dipakai saat kamu bikin website baru.</p>
+        )}
+      </section>
+<section className="wizard-card" data-testid="transactions-block">
+        <div className="block-head"><h2>Riwayat saldo</h2><span className="block-sub">{(wallet.transactions || []).length} transaksi</span></div>
+        {(wallet.transactions || []).map((t, i) => (
+          <div key={i} className="card-item-meta">
+            <span>{t.note || t.type}</span>
+            <b>{Number(t.amount) < 0 ? "-" : "+"}{money(Math.abs(Number(t.amount)))} • {formatDate(t.createdAt)}</b>
           </div>
-          <div className="coupon-inline">
-            <label>
-              <small>KUPON DISKON (OPSIONAL)</small>
-              <div className="coupon-input-row">
-                <input data-testid="coupon-code-input" value={couponCode} onChange={e => { setCouponCode(e.target.value.toUpperCase()); setCoupon(null); }} placeholder="Contoh: HEMAT50" />
-                <button data-testid="coupon-apply-button" onClick={validateCoupon} className="btn btn-outline" type="button">Terapkan</button>
-              </div>
-            </label>
-            {coupon && (
-              <div className="coupon-success" data-testid="coupon-applied">
-                ✓ Kupon <b>{coupon.code}</b> diterapkan · {coupon.discountType === "percentage" ? `Diskon ${coupon.discountValue}%` : coupon.discountType === "fixed" ? `Potongan Rp${money(coupon.discountValue)}` : `Bonus ${coupon.discountValue} hari`}
-              </div>
-            )}
-            {couponErr && <div className="form-error" data-testid="coupon-error">{couponErr}</div>}
-          </div>
-          <div className="bank-instructions">
-            <b>Instruksi transfer</b>
-            <p>{settings.paymentInstructions}</p>
-          </div>
-          <div className="wizard-actions">
-            {finalAmount === 0 ? (
-              <>
-                <div className="free-plan-notice">Paket ini gratis — tidak ada yang perlu ditransfer.</div>
-                <Button data-testid="already-transferred-button" onClick={() => setStep(2)}>Lanjutkan tanpa pembayaran <ArrowRight size={16} /></Button>
-              </>
-            ) : (
-              <Button data-testid="already-transferred-button" onClick={() => setStep(2)}>Saya sudah transfer <ArrowRight size={16} /></Button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="wizard-card">
-          {finalAmount === 0 ? (
-            <>
-              <div className="eyebrow">KONFIRMASI PAKET GRATIS</div>
-              <h2>Tidak ada yang perlu dibayar</h2>
-              <p className="form-intro">Total pesananmu Rp0. Kamu bisa langsung mengirim pengajuan — unggah bukti tidak diperlukan (opsional).</p>
-            </>
-          ) : (
-            <>
-              <div className="eyebrow">BUKTI TRANSFER</div>
-              <h2>Unggah bukti pembayaran</h2>
-              <p className="form-intro">Foto/screenshot atau PDF bukti transfer.</p>
-            </>
-          )}
-          <div className="form-grid">
-            {finalAmount > 0 && <label>Tanggal transfer<input data-testid="transfer-date-input" type="date" value={transferDate} onChange={e => setTransferDate(e.target.value)} /></label>}
-            <label className="full upload-label">{finalAmount === 0 ? "Bukti pembayaran (opsional)" : "Bukti transfer"}
-              <div className="upload-box upload-box-large">
-                {proofPreview ? <img src={proofPreview} alt="bukti" /> : proofUrl ? <span>Gambar terunggah ✓</span> : <><Upload size={20} /><span>Upload gambar JPG, PNG, atau WebP (maks. 8MB)</span></>}
-                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadProof} data-testid="proof-input" />
-              </div>
-            </label>
-            <label className="full">Catatan (opsional)<textarea data-testid="payment-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Tambahkan catatan untuk admin (opsional)" /></label>
-          </div>
-          <FormError msg={err} />
-          <div className="wizard-actions">
-            <Button data-testid="payment-back-button" variant="outline" onClick={() => setStep(1)}>Kembali</Button>
-            <Button data-testid="submit-payment-button" onClick={submit} disabled={busy || (finalAmount > 0 && !proofUrl)}>{busy ? "Mengirim..." : finalAmount === 0 ? "Aktifkan paket gratis" : "Kirim untuk verifikasi"}</Button>
-          </div>
-        </div>
-      )}
-
-      {step === 3 && payment && (
-        <div className="wizard-card">
-          <div className="success-panel">
-            <div className="success-icon"><Check size={30} /></div>
-            <div className="eyebrow">PEMBAYARAN DIKIRIM</div>
-            <h2>Terima kasih, {user.name.split(" ")[0]}.</h2>
-            <p>{finalAmount === 0
-              ? <>Pengajuan paket <b>{plan.name}</b> (gratis) sudah dikirim dan menunggu verifikasi admin.{bonusDays > 0 && ` Kamu akan mendapat bonus ${bonusDays} hari saat disetujui.`} Kami akan memberi kabar melalui notifikasi.</>
-              : <>Pembayaran <b>{plan.name}</b> senilai <b>Rp{money(finalAmount)}</b> sedang menunggu verifikasi admin.{bonusDays > 0 && ` Kamu akan mendapat bonus ${bonusDays} hari saat pembayaran disetujui.`} Kami akan memberi kabar melalui notifikasi.</>}
-            </p>
-            <div className="wizard-actions">
-              <a data-testid="whatsapp-admin-button" className="btn btn-primary" href={wa()} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Kirim bukti ke Admin via WhatsApp</a>
-              <Link data-testid="back-to-subscription" className="btn btn-outline" to="/dashboard/subscription">Kembali ke paket</Link>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function PaymentDetail() {
-  const { pid } = useParams();
-  const [p, setP] = useState(null);
-  const [settings, setSettings] = useState(null);
-  useEffect(() => {
-    Promise.all([api.get(`/payments/${pid}`), api.get("/settings/public")]).then(([r, s]) => { setP(r.data); setSettings(s.data); });
-  }, [pid]);
-  if (!p || !settings) return <Loading text="Memuat pembayaran..." />;
-  const proofUrl = resolveMediaUrl(p.proofUrl);
-  return (
-    <div className="dashboard">
-      <div className="page-head compact">
-        <div>
-          <Link className="back-link" to="/dashboard/subscription">← Kembali</Link>
-          <h1>Detail pembayaran</h1>
-          <p>{p.planName} · Rp{money(p.amount)}</p>
-        </div>
-        <StatusBadge status={p.status} />
-      </div>
-      <div className="payment-detail-grid">
-        <div className="wizard-card">
-          <div className="eyebrow">INFORMASI</div>
-          <div className="info-rows">
-            <div><small>PAKET</small><b>{p.planName}</b></div>
-            <div><small>JUMLAH</small><b>Rp{money(p.amount)}</b></div>
-            <div><small>WEBSITE TAMBAHAN</small><b>{p.additionalWebsiteCount || 0}</b></div>
-            <div><small>TANGGAL TRANSFER</small><b>{p.transferDate || "-"}</b></div>
-            <div><small>TANGGAL SUBMIT</small><b>{formatDate(p.createdAt)}</b></div>
-            {p.adminNotes && <div><small>CATATAN ADMIN</small><b style={{ color: "#dc2626" }}>{p.adminNotes}</b></div>}
-            {p.notes && <div><small>CATATAN KAMU</small><b>{p.notes}</b></div>}
-          </div>
-        </div>
-        <div className="wizard-card">
-          <div className="eyebrow">BUKTI TRANSFER</div>
-          {p.proofUrl && ((p.proofContentType === "application/pdf" || p.proofUrl.toLowerCase().endsWith(".pdf")) ?
-            <a data-testid="view-proof" href={proofUrl} target="_blank" rel="noreferrer" className="btn btn-outline">Buka bukti PDF</a>
-            : <img data-testid="proof-image" src={proofUrl} alt="bukti" style={{ maxWidth: "100%", borderRadius: 12 }} />
-          )}
-        </div>
-      </div>
+        ))}
+        {!(wallet.transactions || []).length && <p className="empty-text">Belum ada transaksi saldo.</p>}
+      </section>
+<p className="form-hint" data-testid="cards-help">
+        Website otomatis beku kalau masa aktifnya habis — tambah masa aktif sebelum tanggal berakhir supaya website tetap online.{" "}
+        <Link to="/dashboard">Kembali ke dashboard</Link>
+      </p>
     </div>
   );
 }

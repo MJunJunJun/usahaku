@@ -6,6 +6,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Respons
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
@@ -63,7 +64,7 @@ app = FastAPI(title="Situska API")
 api = APIRouter(prefix="/api")
 log = logging.getLogger("usahaku")
 JWT_ALGORITHM = "HS256"
-TRIAL_DAYS = 30
+TRIAL_DAYS = 14
 # Durasi sesi login (hari). Setelah login, user tetap masuk selama ini
 # tanpa perlu login ulang setiap membuka website.
 AUTH_COOKIE_DAYS = int(os.environ.get("AUTH_COOKIE_DAYS", "30"))
@@ -402,6 +403,36 @@ async def notify(user_id, title, message):
 async def log_activity(admin_id, action, target_user_id=None, target_resource_id=None, notes=""):
     await db.activity_logs.insert_one({"id": uid(), "adminId": admin_id, "action": action, "targetUserId": target_user_id, "targetResourceId": target_resource_id, "notes": notes, "createdAt": now()})
 
+# --- Monetisasi (Fase 2): paket, saldo/dompet, kartu langganan ---
+import monetization_service  # noqa: E402
+import monetization_api  # noqa: E402
+monetization = monetization_service.Monetization(db, notify, log_activity, uid, now)
+api.include_router(monetization_api.build_router(monetization, current_user))
+
+import monetization_jobs  # noqa: E402
+
+
+async def _wa_send_text(to, text, event="message", ref_id=""):
+    return await wa_service.send_text(db, to, text, event=event, ref_id=ref_id)
+
+
+jobs = monetization_jobs.MonetizationJobs(db, monetization, notify, _wa_send_text, log_activity, now)
+
+
+class JobsRunInput(BaseModel):
+    dryRun: bool = True
+
+
+@api.post("/admin/monetization/run-jobs")
+async def admin_run_jobs(data: JobsRunInput = JobsRunInput(), _=Depends(admin_user)):
+    return await jobs.run(dry_run=data.dryRun)
+
+
+@api.get("/admin/monetization/jobs-history")
+async def admin_jobs_history(limit: int = 10, _=Depends(admin_user)):
+    return {"items": await jobs.history(limit)}
+
+
 class AuthInput(BaseModel):
     email: EmailStr
     password: str
@@ -730,7 +761,8 @@ async def register(data: RegisterInput, response: Response, request: Request):
 
     await notify(user["id"], "Selamat datang di Situska", "Buat website pertamamu untuk memulai masa Gratis 30 hari.")
     if phone:
-        await db.wa_verifications.delete_one({"phone": phone})
+        await db.wa_verifications.update_one({"phone": phone}, {"$set": {"usedForAccount": True, "accountUserId": user["id"], "updatedAt": now()}})
+        await db.users.update_one({"id": user["id"]}, {"$set": {"waVerified": True}})
     set_auth_cookie(response, request, token(user["id"], days=AUTH_COOKIE_DAYS, session_version=user.get("sessionVersion", 0)))
     return public(user)
 
@@ -848,7 +880,8 @@ async def dashboard(user=Depends(current_user)):
     for w in websites:
         w["productCount"] = await db.products.count_documents({"websiteId": w["id"]})
     stats = {"total": len(websites), "published": sum(1 for w in websites if w.get("status") == "PUBLISHED"), "draft": sum(1 for w in websites if w.get("status") != "PUBLISHED"), "products": sum(w["productCount"] for w in websites)}
-    return {"user": public(user), "websites": websites, "stats": stats, "quota": quota_for(user)}
+    card_q = await monetization.quota_info(user)
+    return {"user": public(user), "websites": websites, "stats": stats, "quota": card_q["quota"], "cardQuota": card_q}
 
 @api.get("/notifications")
 async def notifications(user=Depends(current_user)):
@@ -866,21 +899,10 @@ async def websites_list(user=Depends(current_user)):
 @api.post("/websites")
 async def create_website(data: WebsiteInput, user=Depends(current_user)):
     user = await refresh_status(user)
-    if not is_owner_active(user):
-        raise HTTPException(403, "Trial atau berlangganan Anda telah berakhir. Silakan pilih paket untuk lanjut membuat website.")
-    count = await db.websites.count_documents({"userId": user["id"]})
-    q = quota_for(user)
-    if count >= q:
-        raise HTTPException(403, "Limit website Anda sudah tercapai. Silakan upgrade paket atau tambah kuota website.")
-    if user.get("subscriptionStatus") == "TRIAL_PENDING" and count == 0:
-        trial_start = datetime.now(timezone.utc)
-        trial_end = trial_start + timedelta(days=TRIAL_DAYS)
-        await db.users.update_one(
-            {"id": user["id"], "subscriptionStatus": "TRIAL_PENDING"},
-            {"$set": {"subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": trial_start.isoformat(), "trialEndDate": trial_end.isoformat()}},
-        )
-        user.update({"subscriptionStatus": "TRIAL_ACTIVE", "trialStartDate": trial_start.isoformat(), "trialEndDate": trial_end.isoformat()})
-        await notify(user["id"], "Masa Gratis 30 hari dimulai", "Website pertama berhasil dibuat. Masa Gratis Anda aktif selama 30 hari.")
+    # Gerbang model kartu: bikin website butuh kartu kosong aktif, atau masa gratis (1x per akun & per nomor WA)
+    qinfo = await monetization.quota_info(user)
+    if not qinfo["canCreate"]:
+        raise HTTPException(403, qinfo["message"])
     requested_slug = slugify_store_address(data.storeSlug or data.businessName) or "website"
     duplicate = await db.websites.find_one({"$or": [{"slug": requested_slug}, {"storeSlug": requested_slug}]}, {"_id": 0})
     if duplicate:
@@ -892,7 +914,14 @@ async def create_website(data: WebsiteInput, user=Depends(current_user)):
     website_data["storeSlug"] = requested_slug
     website = {"id": uid(), "userId": user["id"], **website_data, "status": "DRAFT", "slug": "", "templateStyle": t_style, "themeConfig": t_config, "aiGeneratedContent": {}, "businessHours": [], "sectionVisibility": dict(DEFAULT_SECTION_VISIBILITY), "contactCards": dict(DEFAULT_CONTACT_CARDS), "mapsUrl": "", "createdAt": now(), "updatedAt": now()}
     await db.websites.insert_one(website)
-    return public(website)
+    gate = await monetization.card_for_new_site(user, website["id"])
+    if gate["card"]:
+        website["cardId"] = gate["card"]["id"]
+    if gate["mode"] == "trial":
+        await notify(user["id"], f"Masa Gratis {qinfo['trialDays']} hari dimulai 🎉",
+                     f"Website \"{website.get('businessName') or 'pertamamu'}\" dibuat dengan masa gratis {qinfo['trialDays']} hari "
+                     f"(sampai {str(gate['card'].get('expiresAt',''))[:10]}). Selama masa gratis maksimal {qinfo['productLimit']} produk.")
+    return {**public(website), "card": gate["card"], "gateMode": gate["mode"]}
 
 async def owned_site(site_id, user):
     site = await db.websites.find_one({"id": site_id, "userId": user["id"]}, {"_id": 0}) if user.get("role") != "ADMIN" else await db.websites.find_one({"id": site_id}, {"_id": 0})
@@ -1037,9 +1066,9 @@ async def add_product(site_id: str, data: ProductInput, user=Depends(current_use
     await owned_site(site_id, user)
     if len(data.images) > 3: raise HTTPException(400, "Maksimal 3 gambar per produk")
     product_count = await db.products.count_documents({"websiteId": site_id})
-    product_limit = product_limit_for(user)
+    product_limit = await monetization.product_limit_for_site(user["id"], site_id)
     if product_limit is not None and product_count >= product_limit:
-        raise HTTPException(403, "Paket Gratis maksimal 3 produk per website. Upgrade paket untuk katalog tanpa batas.")
+        raise HTTPException(403, f"Masa gratis maksimal {product_limit} produk per website. Beli kartu langganan untuk katalog tanpa batas.")
     item = {"id": uid(), "websiteId": site_id, **data.model_dump(), "sortOrder": product_count, "createdAt": now()}
     await db.products.insert_one(item)
     return public(item)
@@ -1441,11 +1470,19 @@ async def public_site(slug: str):
     if not owner: raise HTTPException(404, "Website tidak tersedia")
     await refresh_status(owner)
     owner = await db.users.find_one({"id": site["userId"]}, {"_id": 0})
-    if not is_owner_active(owner):
+    state = await monetization.site_public_state(site["id"])
+    if state["hasCard"]:
+        # Model kartu: masa aktif habis -> website beku (halaman "masa aktif habis")
+        if state["frozen"]:
+            return {"maintenance": True, "slug": slug, "businessName": site.get("businessName", ""),
+                    "frozen": True, "daysRemaining": 0, "lastActiveDate": state.get("lastActiveDate")}
+    elif not is_owner_active(owner):
+        # situs lama yang belum punya kartu: tetap pakai aturan status langganan lama
         return {"maintenance": True, "slug": slug, "businessName": site.get("businessName", "")}
     await db.websites.update_one({"slug": slug}, {"$inc": {"pageViews": 1}})
     site["products"] = await db.products.find({"websiteId": site["id"]}, {"_id": 0}).sort("sortOrder", 1).to_list(200)
     site["maintenance"] = False
+    site["showCredit"] = state["showCredit"]
     return site
 
 @api.get("/public/{slug}/articles")
@@ -1779,6 +1816,110 @@ async def legacy_article_redirect(request: Request, article_slug: str):
             return Response(content=document, media_type="text/html; charset=utf-8")
     return RedirectResponse(url=f"/{article['slug']}", status_code=301)
 
+class AdminWalletInput(BaseModel):
+    userId: str
+    amount: int
+    note: str = ""
+    bonus: bool = False
+
+class AdminBonusInput(BaseModel):
+    enabled: bool = True
+    minAmount: int = 100000
+    bonus: int = 50000
+
+class AdminToggleInput(BaseModel):
+    enabled: bool = True
+
+class AdminPackagesInput(BaseModel):
+    packages: list = []
+
+@api.post("/admin/monetization/wallet")
+async def admin_wallet_adjust(data: AdminWalletInput, _=Depends(admin_user)):
+    """Tambah/kurangi saldo dompet user (mis. approve top up transfer manual)."""
+    u = await db.users.find_one({"id": data.userId}, {"_id": 0})
+    if not u: raise HTTPException(404, "User tidak ditemukan")
+    res = await monetization.admin_credit(data.userId, data.amount, data.note, bool(data.bonus))
+    return {"ok": True, **res}
+
+@api.post("/admin/monetization/packages")
+async def admin_set_packages(data: AdminPackagesInput, _=Depends(admin_user)):
+    """Atur tabel harga kartu (durasi, harga normal, harga promo)."""
+    pkgs = []
+    for p in (data.packages or []):
+        months = int(p.get("months") or 0)
+        days = int(p.get("days") or months * 30)
+        normal = int(p.get("normalPrice") or 0)
+        promo = int(p.get("promoPrice") or normal)
+        if months <= 0 or days <= 0 or normal <= 0 or promo <= 0:
+            raise HTTPException(400, "Paket tidak valid: durasi & harga wajib lebih dari 0.")
+        pkgs.append({"months": months, "days": days, "normalPrice": normal, "promoPrice": promo})
+    if not pkgs: raise HTTPException(400, "Minimal 1 paket.")
+    pkgs.sort(key=lambda p: p["months"])
+    await db.settings.update_one({"id": "platform"}, {"$set": {"packages": pkgs}}, upsert=True)
+    await log_activity(_, "admin_packages_update", notes=f"{len(pkgs)} paket diperbarui")
+    return {"ok": True, "packages": [monetization.package_view(p) for p in pkgs]}
+
+@api.post("/admin/monetization/bonus")
+async def admin_set_bonus(data: AdminBonusInput, _=Depends(admin_user)):
+    """Atur bonus top up pertama."""
+    await db.settings.update_one({"id": "platform"}, {"$set": {"topupBonus": {
+        "enabled": bool(data.enabled), "minTopup": int(data.minAmount), "bonus": int(data.bonus),
+        "oncePerAccount": True}}}, upsert=True)
+    return {"ok": True}
+
+@api.post("/admin/monetization/toggle")
+async def admin_toggle_monetization(data: AdminToggleInput, _=Depends(admin_user)):
+    """Nyalakan/matikan otomasi monetisasi (job harian)."""
+    await db.settings.update_one({"id": "platform"}, {"$set": {"monetizationEnabled": bool(data.enabled)}}, upsert=True)
+    await log_activity(_, "admin_monetization_toggle", notes=f"monetizationEnabled={bool(data.enabled)}")
+    return {"ok": True, "enabled": bool(data.enabled)}
+
+@api.get("/admin/monetization/summary")
+async def admin_monetization_summary(_=Depends(admin_user)):
+    """Ringkasan monetisasi: kartu, saldo, pendapatan, paket & bonus (panel admin)."""
+    cfg = await monetization.config()
+    cards = await db.cards.find({}, {"_id": 0}).to_list(5000)
+    users = await db.users.find({},
+                                {"_id": 0, "id": 1, "email": 1, "name": 1, "whatsapp": 1,
+                                 "walletBalance": 1, "trialUsed": 1}).to_list(5000)
+    sites = await db.websites.find({}, {"_id": 0, "id": 1, "slug": 1, "businessName": 1, "userId": 1}).to_list(5000)
+    smap = {s["id"]: s for s in sites}
+    umap = {u["id"]: u for u in users}
+    views = []
+    stat = {"total": 0, "aktif": 0, "beku": 0, "kosong": 0, "masaGratis": 0, "berbayar": 0, "tanpaKartu": 0}
+    revenue = 0
+    for c in cards:
+        v = monetization.card_view(c)
+        u = umap.get(c.get("userId")) or {}
+        s = smap.get(c.get("websiteId")) if c.get("websiteId") else None
+        v["userEmail"] = u.get("email")
+        v["userName"] = u.get("name")
+        v["siteSlug"] = (s or {}).get("slug")
+        v["siteName"] = (s or {}).get("businessName")
+        views.append(v)
+        stat["total"] += 1
+        if not c.get("websiteId"):
+            stat["kosong"] += 1
+        elif (v.get("state") or "").upper() in ("ACTIVE", "TRIAL"):
+            stat["aktif"] += 1
+        else:
+            stat["beku"] += 1
+        if c.get("isTrialCard"):
+            stat["masaGratis"] += 1
+        else:
+            stat["berbayar"] += 1
+            revenue += int(c.get("planPrice") or 0)
+    stat["tanpaKartu"] = len([s for s in sites if s["id"] not in {c.get("websiteId") for c in cards if c.get("websiteId")}])
+    wallets = [{"userId": u["id"], "email": u.get("email"), "name": u.get("name"), "whatsapp": u.get("whatsapp"),
+                "balance": int(u.get("walletBalance") or 0), "trialUsed": bool(u.get("trialUsed"))}
+               for u in users if int(u.get("walletBalance") or 0) > 0 or u.get("trialUsed")]
+    txs = await db.wallet_transactions.find({}, {"_id": 0}).sort("createdAt", -1).to_list(200)
+    return {"stats": stat, "revenue": revenue, "cards": views, "wallets": wallets,
+            "transactions": txs, "users": [{"userId": u["id"], "email": u.get("email"), "name": u.get("name"),
+                                            "balance": int(u.get("walletBalance") or 0)} for u in users],
+            "packages": [monetization.package_view(p) for p in cfg["packages"]],
+            "bonus": cfg["topup"], "trial": cfg["trial"], "minTopup": cfg["minTopup"], "enabled": cfg["enabled"]}
+
 @api.get("/admin/payments")
 async def admin_payments(_=Depends(admin_user)):
     return await db.payments.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
@@ -1795,6 +1936,9 @@ async def admin_payment_detail(pid: str, _=Depends(admin_user)):
 async def approve_payment(pid: str, admin=Depends(admin_user)):
     p = await db.payments.find_one({"id": pid}, {"_id": 0})
     if not p: raise HTTPException(404, "Pembayaran tidak ditemukan")
+    # Fase 2: top up saldo & pembelian kartu diproses layanan monetisasi
+    if p.get("kind") in ("topup", "card"):
+        return await monetization.apply_payment(p, admin)
     if p.get("status") != "PENDING": raise HTTPException(400, "Pembayaran ini sudah diproses.")
     plan = await db.plans.find_one({"slug": p["planSlug"]}, {"_id": 0})
     if not plan: raise HTTPException(400, "Paket tidak ditemukan")
@@ -2148,21 +2292,22 @@ async def website_analytics(site_id: str, user=Depends(current_user)):
 @api.post("/demo/seed")
 async def demo_seed(user=Depends(current_user)):
     user = await refresh_status(user)
-    if not is_owner_active(user):
-        raise HTTPException(403, "Aktifkan paket atau berlangganan untuk memakai demo.")
-    count = await db.websites.count_documents({"userId": user["id"]})
-    q = quota_for(user)
-    if count >= q:
-        raise HTTPException(403, "Limit website Anda sudah tercapai. Silakan upgrade paket.")
+    qinfo = await monetization.quota_info(user)
+    if not qinfo["canCreate"]:
+        raise HTTPException(403, qinfo["message"])
     website = {"id": uid(), "userId": user["id"], "businessName": "Kopi Senja", "category": "Coffee Shop", "description": "Kedai kopi kecil dengan biji lokal pilihan dan suasana hangat. Cocok untuk bersantai, berbincang, atau bekerja santai.", "logoUrl": "", "coverImageUrl": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1600&auto=format&fit=crop", "whatsapp": "6281234567890", "phone": "", "email": "halo@kopisenja.id", "instagram": "@kopisenja", "facebook": "", "tiktok": "", "address": "Jl. Kemang Raya No. 12", "city": "Jakarta Selatan", "province": "DKI Jakarta", "postalCode": "12730", "latitude": None, "longitude": None, "customDomain": "", "status": "DRAFT", "slug": "", "themeConfig": {"primary": "#0077B6", "accent": "#03045E", "style": "warm"}, "aiGeneratedContent": {"heroTitle": "Temukan jeda di setiap teguk.", "heroSubtitle": "Kopi pilihan, suasana hangat, dan cerita yang dekat setiap hari.", "heroCta": "Jelajahi menu", "about": "Kopi Senja adalah kedai kopi kecil di Kemang yang menyajikan biji lokal pilihan. Kami percaya kopi bukan hanya minuman—tapi jeda hangat di tengah hari yang sibuk.", "highlights": ["Biji kopi lokal pilihan", "Suasana hangat & tenang", "Cocok untuk santai dan kerja"], "productHeadline": "Menu favorit", "primaryColor": "#0077B6", "accentColor": "#03045E", "style": "warm"}, "businessHours": [], "createdAt": now(), "updatedAt": now()}
     await db.websites.insert_one(website)
+    gate = await monetization.card_for_new_site(user, website["id"])
+    if gate["card"]:
+        website["cardId"] = gate["card"]["id"]
+    plimit = qinfo.get("productLimit")
     demo_products = [
         {"name": "Es Kopi Gula Aren", "description": "Kopi susu dengan gula aren khas, disajikan dingin.", "price": 28000, "images": []},
         {"name": "Matcha Latte", "description": "Matcha premium dengan susu segar.", "price": 32000, "images": []},
         {"name": "Americano", "description": "Espresso murni dengan air panas.", "price": 24000, "images": []},
         {"name": "Croissant Coklat", "description": "Croissant butter dengan isian coklat lumer.", "price": 22000, "images": []},
     ]
-    for i, p in enumerate(demo_products):
+    for i, p in enumerate(demo_products[:plimit] if plimit else demo_products):
         await db.products.insert_one({"id": uid(), "websiteId": website["id"], **p, "category": "", "sortOrder": i, "createdAt": now()})
     return public(website)
 
@@ -2773,6 +2918,10 @@ async def startup():
             await db.websites.drop_index("slug_1")
         await db.websites.create_index("slug", unique=True, name="slug_unique_nonempty", partialFilterExpression={"slug": {"$gt": ""}})
         await db.payments.create_index("userId")
+        # Monetisasi (Fase 2): kartu langganan, dompet, riwayat transaksi
+        await db.cards.create_index("userId")
+        await db.cards.create_index("websiteId")
+        await db.wallet_transactions.create_index("userId")
         await db.notifications.create_index("userId")
         await db.coupons.create_index("code", unique=True)
         # WhatsApp inbox: idempotensi webhook + lookup cepat
@@ -2882,6 +3031,25 @@ async def startup():
 
     platform_settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
     await ensure_showcase_sites(platform_settings.get("adminWhatsapp", DEFAULT_SETTINGS["adminWhatsapp"]))
+
+async def _monetization_daily_loop():
+    """Job harian Fase 3: beku/aktifkan website, reminder, auto-renew, hapus kartu kosong."""
+    await asyncio.sleep(60)
+    while True:
+        try:
+            cfg = await monetization.config()
+            if cfg.get("enabled"):
+                rep = await jobs.run(dry_run=False)
+                log.info("monetization job harian: %s", rep.get("summary"))
+        except Exception as exc:
+            log.warning("monetization job gagal: %s", exc)
+        await asyncio.sleep(86400)
+
+
+@app.on_event("startup")
+async def _start_monetization_jobs():
+    asyncio.create_task(_monetization_daily_loop())
+
 
 @app.on_event("shutdown")
 async def shutdown():
