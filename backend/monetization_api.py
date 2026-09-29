@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class TopupInput(BaseModel):
-    amount: int = Field(..., ge=10000)
+    amount: int = Field(..., ge=10000, strict=True)
     method: str = "transfer"
 
 

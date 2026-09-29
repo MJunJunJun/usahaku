@@ -119,19 +119,16 @@ def test_topup_bonus_once_per_account():
 
 
 def test_auto_renew_decisions():
-    cukup = m.auto_renew_decision(card(days_left=2, autorenew=True, months=1), 75000, PKG, NOW)
-    assert cukup["renew"] is True and cukup["price"] == 50000 and cukup["days"] == 30
-    assert m.days_remaining(cukup["newExpiresAt"], NOW) == 32              # 2 + 30
-
-    kurang = m.auto_renew_decision(card(days_left=2, autorenew=True), 20000, PKG, NOW)
-    assert kurang["renew"] is False and kurang["reason"] == "insufficient_balance" and kurang["short"] == 30000
-
-    assert m.auto_renew_decision(card(days_left=2, autorenew=False), 999999, PKG, NOW)["reason"] == "auto_renew_off"
-    assert m.auto_renew_decision(card(days_left=2, autorenew=True, website=None), 999999, PKG, NOW)["reason"] == "card_empty"
-    assert m.auto_renew_decision(card(days_left=10, autorenew=True), 999999, PKG, NOW)["reason"] == "not_due"
-
-    tahunan = m.auto_renew_decision(card(days_left=1, autorenew=True, months=12), 500000, PKG, NOW)
-    assert tahunan["renew"] is True and tahunan["price"] == 450000 and tahunan["days"] == 360
+    cukup = m.auto_renew_decision(card(days_left=0, autorenew=True), 75000, PKG, NOW)
+    assert cukup["renew"] and cukup["price"] == 50000 and cukup["days"] == 30
+    assert m.days_remaining(cukup["newExpiresAt"], NOW) == 30
+    kurang = m.auto_renew_decision(card(days_left=0, autorenew=True), 20000, PKG, NOW)
+    assert not kurang["renew"] and kurang["short"] == 30000
+    assert m.auto_renew_decision(card(days_left=0, autorenew=False), 999999, PKG, NOW)["reason"] == "auto_renew_off"
+    assert m.auto_renew_decision(card(days_left=0, autorenew=True, website=None), 999999, PKG, NOW)["reason"] == "card_empty"
+    assert m.auto_renew_decision(card(days_left=2, autorenew=True), 999999, PKG, NOW)["reason"] == "not_due"
+    tahunan = m.auto_renew_decision(card(days_left=0, autorenew=True, months=12), 500000, PKG, NOW)
+    assert tahunan["renew"] and tahunan["price"] == 50000 and tahunan["days"] == 30
 
 
 # ------------------------------------------------------------------ notifikasi

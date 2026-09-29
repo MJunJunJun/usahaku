@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------------------- konstanta
 MIN_PURCHASE_DAYS = 30          # kartu baru wajib minimal 30 hari (Rp50.000)
-AUTORENEW_WINDOW_DAYS = 3       # coba potong saldo di H-3, H-1, dan hari H
+AUTORENEW_WINDOW_DAYS = 0       # perpanjang bulanan saat masa aktif berakhir
 
 STATE_TRIAL = "TRIAL"           # kartu trial, sudah ada website
 STATE_ACTIVE = "ACTIVE"         # kartu berbayar, sudah ada website
@@ -274,7 +274,7 @@ def auto_renew_decision(card, balance, packages, now=None, window=AUTORENEW_WIND
     """Putusan auto-renew untuk SATU kartu.
 
     Aturan: hanya kartu yang PUNYA website, auto-renew ON, masuk jendela
-    H-3..H, dan saldo cukup. Kartu kosong tidak pernah dipotong otomatis.
+    saat masa aktif habis, dan saldo cukup. Durasi selalu bulanan. Kartu kosong tidak pernah dipotong otomatis.
     """
     now = parse_dt(now) or utcnow()
     card = card or {}
@@ -285,7 +285,7 @@ def auto_renew_decision(card, balance, packages, now=None, window=AUTORENEW_WIND
     remaining = days_remaining(card.get("expiresAt"), now)
     if remaining > window:
         return {"renew": False, "reason": "not_due", "daysRemaining": remaining}
-    pkg = package_by_months(packages, card.get("planMonths") or 1) or package_by_months(packages, 1)
+    pkg = package_by_months(packages, 1)
     if not pkg:
         return {"renew": False, "reason": "package_missing"}
     price = price_for(pkg, "promo")

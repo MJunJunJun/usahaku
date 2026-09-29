@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 import monetization as rules
 import wa_service
+from billing import BillingMixin
 
 # pesan gerbang kartu (dipakai alur bikin website)
 NO_CARD_MSG = ("Kuota kartu kamu sudah terpakai semua. Beli kartu langganan dulu untuk membuat website baru, "
@@ -25,7 +26,7 @@ PAY_TOPUP = "topup"
 PAY_CARD = "card"
 
 
-class Monetization:
+class Monetization(BillingMixin):
     def __init__(self, db, notify=None, log_activity=None, uid=None, now_fn=None):
         self.db = db
         self._notify = notify
@@ -121,26 +122,17 @@ class Monetization:
         doc.pop("_id", None)
         return doc
 
-    async def admin_credit(self, user_id, amount, note="", apply_bonus=True):
-        """Tambah/kurangi saldo dompet oleh admin (+ bonus top up pertama bila berlaku)."""
-        user = await self.db.users.find_one({"id": user_id}, {"_id": 0}) or {}
-        amount = int(amount)
-        if amount == 0:
-            raise HTTPException(400, "Nominal tidak boleh 0.")
+    async def admin_credit(self, user_id, amount, note="", apply_bonus=False):
+        """Explicit corrections are ADJUST entries, never a top-up or welcome bonus."""
+        if not amount or not note.strip():
+            raise HTTPException(400, "Nominal dan alasan penyesuaian wajib diisi.")
+        if not await self.db.users.find_one({"id": user_id}):
+            raise HTTPException(404, "Pengguna tidak ditemukan.")
         if amount < 0:
-            if (await self.balance(user_id)) + amount < 0:
-                raise HTTPException(400, "Saldo tidak cukup untuk dikurangi.")
-            await self.db.users.update_one({"id": user_id}, {"$inc": {"walletBalance": amount}})
-            bal = await self.balance(user_id)
-            await self._write_tx(user_id, "ADJUST", amount, bal, None, note or "Penyesuaian admin")
-            return {"balance": bal, "bonus": 0}
-        cfg = await self.config()
-        bonus = rules.topup_bonus_for(amount, cfg["topup"], bool(user.get("topupBonusClaimed"))) if apply_bonus else 0
-        bal = await self.credit(user_id, amount, "TOPUP", note or "Top up manual (admin)")
-        if bonus:
-            bal = await self.credit(user_id, bonus, "BONUS", "Bonus top up pertama", bonus=bonus)
-            await self.db.users.update_one({"id": user_id}, {"$set": {"topupBonusClaimed": True}})
-        return {"balance": bal, "bonus": bonus}
+            balance = await self.debit(user_id, -amount, "ADJUST", note.strip())
+        else:
+            balance = await self.credit(user_id, amount, "ADJUST", note.strip())
+        return {"balance": balance, "bonus": 0}
 
     async def credit(self, user_id, amount, type_="TOPUP", note="", ref_id=None, bonus=0):
         await self.ensure_wallet(user_id)
@@ -173,7 +165,7 @@ class Monetization:
         cfg = await self.config()
         return {
             "balance": await self.balance(user["id"]),
-            "bonusClaimed": bool(user.get("topupBonusClaimed")),
+            "bonusClaimed": await self.first_topup_used(user),
             "topupBonus": cfg["topup"],
             "minTopup": cfg["minTopup"],
             "bank": cfg["bank"],
@@ -185,8 +177,10 @@ class Monetization:
     async def request_payment(self, user, amount, kind, months=None, card_id=None, label=None, bonus=0):
         doc = {
             "id": self.uid(), "userId": user["id"], "kind": kind, "planSlug": None,
+            "userName": user.get("name", ""), "userEmail": user.get("email", ""),
+            "bank": (await self.config())["bank"],
             "itemLabel": label, "amount": int(amount), "bonusAmount": int(bonus),
-            "months": months, "cardId": card_id, "status": "PENDING", "method": "transfer",
+            "months": months, "cardId": card_id, "status": "AWAITING_PAYMENT", "method": "transfer",
             "proofUrl": None, "createdAt": self.now(), "reviewedAt": None, "reviewedBy": None,
             "adminNotes": "", "proofContentType": None,
         }
@@ -201,7 +195,7 @@ class Monetization:
             raise HTTPException(400, f"Minimal top up Rp{cfg['minTopup']:,}".replace(",", "."))
         if method != "transfer":
             raise HTTPException(400, "Top up saldo saat ini hanya lewat transfer bank.")
-        bonus = rules.topup_bonus_for(amount, cfg["topup"], bool(user.get("topupBonusClaimed")))
+        bonus = rules.topup_bonus_for(amount, cfg["topup"], await self.first_topup_used(user))
         pay = await self.request_payment(
             user, amount, PAY_TOPUP,
             label=f"Top Up Saldo Rp{amount:,}".replace(",", ".") + (f" (+bonus Rp{bonus:,})".replace(",", ".") if bonus else ""),
@@ -269,7 +263,7 @@ class Monetization:
             "id": self.uid(), "userId": user["id"], "name": await self._next_card_name(user["id"]),
             "websiteId": site_id, "isTrialCard": True, "status": rules.STATE_TRIAL,
             "expiresAt": rules.iso(rules.add_days(self.now(), days)), "daysTotal": days,
-            "planMonths": 0, "planPrice": 0, "autoRenew": False,
+            "planMonths": 0, "planPrice": 0, "autoRenew": True, "renewalMonths": 1,
             "createdAt": self.now(), "updatedAt": self.now(),
         }
         await self.db.cards.insert_one(card)
@@ -289,7 +283,7 @@ class Monetization:
             "id": self.uid(), "userId": user["id"], "name": await self._next_card_name(user["id"]),
             "websiteId": None, "isTrialCard": False, "status": status,
             "expiresAt": expires_at, "daysTotal": int(pkg["days"]) if expires_at else 0,
-            "planMonths": int(months), "planPrice": int(price), "autoRenew": False,
+            "planMonths": int(months), "planPrice": int(price), "autoRenew": False, "renewalMonths": 1,
             "method": method, "createdAt": self.now(), "updatedAt": self.now(),
         }
         await self.db.cards.insert_one(card)
@@ -317,14 +311,14 @@ class Monetization:
     def card_name_hint(self, user):
         return "Kartu langganan baru"
 
-    async def purchase(self, user, card_id, months, method="wallet"):
+    async def purchase(self, user, card_id, months, method="wallet", automatic=False):
         card = await self.card_or_404(user["id"], card_id)
         cfg = await self.config()
         pkg = await self.package_for(months, cfg)
         price = int(pkg["promoPrice"])
         label = f"{card['name']} — perpanjang {rules.month_label(pkg['months'])}"
         if method == "wallet":
-            await self.debit(user["id"], price, note=f"Perpanjang {card['name']} {rules.month_label(pkg['months'])}", ref_id=card_id)
+            await self.debit(user["id"], price, "AUTORENEW" if automatic else "PURCHASE", note=f"{'Perpanjangan otomatis' if automatic else 'Perpanjang'} {card['name']} {rules.month_label(pkg['months'])}", ref_id=card_id)
             upd = rules.apply_purchase(card, pkg, self.now())
             upd["status"] = rules.STATE_ACTIVE
             upd["planPrice"] = price
@@ -343,11 +337,12 @@ class Monetization:
 
     async def set_autorenew(self, user, card_id, enabled):
         card = await self.card_or_404(user["id"], card_id)
-        await self.db.cards.update_one({"id": card_id}, {"$set": {"autoRenew": bool(enabled), "updatedAt": self.now()}})
-        fresh = await self.card_or_404(user["id"], card_id)
-        if enabled and not fresh.get("websiteId"):
+        if enabled and not card.get("websiteId"):
             raise HTTPException(400, "Auto-renew hanya untuk kartu yang sudah dipakai website.")
-        return {"card": self.card_view(fresh)}
+        await self.db.cards.update_one({"id": card_id}, {"$set": {
+            "autoRenew": bool(enabled), "autoRenewPreference": bool(enabled),
+            "renewalMonths": 1, "updatedAt": self.now()}})
+        return {"card": self.card_view(await self.card_or_404(user["id"], card_id))}
 
     def gate_message(self, trial):
         """Pesan yang ditampilkan kalau website tidak bisa dibuat."""
@@ -432,7 +427,7 @@ class Monetization:
         card = await self.available_empty_card(user["id"])
         if card:
             await self.db.cards.update_one({"id": card["id"]}, {"$set": {
-                "websiteId": site_id, "emptySince": None, "remindedEmptyOffsets": [], "updatedAt": self.now()}})
+                "websiteId": site_id, "emptySince": None, "remindedEmptyOffsets": [], "updatedAt": self.now(), "autoRenew": card.get("autoRenewPreference", True), "renewalMonths": 1}})
             if site_id:
                 await self.db.websites.update_one({"id": site_id}, {"$set": {"cardId": card["id"]}})
             fresh = await self.db.cards.find_one({"id": card["id"]}, {"_id": 0})
@@ -475,7 +470,7 @@ class Monetization:
         other = await self.db.cards.find_one({"userId": user["id"], "websiteId": site_id, "id": {"$ne": card_id}}, {"_id": 0, "id": 1})
         if other:
             raise HTTPException(400, "Website itu sudah terpasang di kartu lain.")
-        await self.db.cards.update_one({"id": card_id}, {"$set": {"websiteId": site_id, "updatedAt": self.now(),
+        await self.db.cards.update_one({"id": card_id}, {"$set": {"websiteId": site_id, "autoRenew": card.get("autoRenewPreference", True), "renewalMonths": 1, "updatedAt": self.now(),
                                                                   "emptySince": None, "remindedEmptyOffsets": []}})
         await self.db.websites.update_one({"id": site_id}, {"$set": {"cardId": card_id}})
         fresh = await self.card_or_404(user["id"], card_id)
@@ -484,7 +479,7 @@ class Monetization:
     async def detach(self, user, card_id):
         card = await self.card_or_404(user["id"], card_id)
         site_id = card.get("websiteId")
-        await self.db.cards.update_one({"id": card_id}, {"$set": {"websiteId": None, "updatedAt": self.now(),
+        await self.db.cards.update_one({"id": card_id}, {"$set": {"websiteId": None, "autoRenew": False, "updatedAt": self.now(),
                                                                   "emptySince": self.now(), "remindedEmptyOffsets": []}})
         if site_id:
             await self.db.websites.update_one({"id": site_id}, {"$set": {"cardId": None}})
@@ -492,52 +487,6 @@ class Monetization:
         return {"card": self.card_view(fresh)}
 
     # ------------------------------------------------- approve pembayaran
-    async def apply_payment(self, p, admin):
-        """Dipanggil server.py saat admin menyetujui pembayaran topup/kartu."""
-        user_id = p["userId"]
-        user = await self.db.users.find_one({"id": user_id}, {"_id": 0}) or {}
-        result = {"kind": p.get("kind")}
-        if p.get("kind") == PAY_TOPUP:
-            cfg = await self.config()
-            bonus = rules.topup_bonus_for(int(p["amount"]), cfg["topup"], bool(user.get("topupBonusClaimed")))
-            bal = await self.credit(user_id, int(p["amount"]), "TOPUP", note=p.get("itemLabel") or "Top up saldo",
-                                    ref_id=p["id"], bonus=bonus)
-            if bonus:
-                bal = await self.credit(user_id, bonus, "BONUS", note=f"Bonus top up {rules.rupiah(int(p['amount']))}", ref_id=p["id"], bonus=bonus)
-                await self.db.users.update_one({"id": user_id}, {"$set": {"topupBonusClaimed": True}})
-            result.update({"balance": bal, "bonus": bonus})
-        elif p.get("kind") == PAY_CARD:
-            cfg = await self.config()
-            pkg = await self.package_for(p.get("months") or 1, cfg)
-            card = await self.db.cards.find_one({"id": p.get("cardId")}, {"_id": 0}) if p.get("cardId") else None
-            if card:
-                upd = rules.apply_purchase(card, pkg, self.now())
-                upd["status"] = rules.STATE_ACTIVE
-                upd["planPrice"] = int(pkg["promoPrice"])
-                upd["method"] = "transfer"
-                await self.db.cards.update_one({"id": card["id"]}, {"$set": upd})
-                result["card"] = self.card_view({**card, **upd})
-            else:
-                fresh_user = await self.db.users.find_one({"id": user_id}, {"_id": 0}) or user
-                new_card = await self._new_card(fresh_user, pkg, pkg["months"],
-                                                rules.iso(rules.add_days(self.now(), pkg["days"])),
-                                                rules.STATE_ACTIVE, "transfer", int(pkg["promoPrice"]))
-                result["card"] = self.card_view(new_card)
-            result["days"] = int(pkg["days"])
-        await self.db.payments.update_one(
-            {"id": p["id"]},
-            {"$set": {"status": "APPROVED", "reviewedAt": self.now(), "reviewedBy": admin.get("id"), "adminNotes": p.get("adminNotes") or "Disetujui"}},
-        )
-        title = "Pembayaran disetujui ✅" if p.get("kind") == PAY_TOPUP else "Langganan aktif ✅"
-        msg = (f"Saldo kamu bertambah {rules.rupiah(int(p['amount']))}."
-               if p.get("kind") == PAY_TOPUP else
-               f"{result.get('card', {}).get('name', 'Kartu')} aktif {result.get('days')} hari.")
-        await self._notify_user(user_id, title, msg)
-        if self._log:
-            await self._log(admin.get("id"), f"approve_{p.get('kind')}_payment", target_user_id=user_id,
-                            target_resource_id=p["id"], notes=p.get("itemLabel") or "")
-        return result
-
     async def _notify_user(self, user_id, title, message):
         if self._notify:
             await self._notify(user_id, title, message)

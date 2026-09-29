@@ -24,7 +24,6 @@ export function AdminMonetization() {
   const [creditFor, setCreditFor] = useState(null);
   const [amount, setAmount] = useState(100000);
   const [note, setNote] = useState("");
-  const [withBonus, setWithBonus] = useState(true);
 
   const load = () => api.get("/admin/monetization/summary").then((r) => {
     setD(r.data);
@@ -42,7 +41,7 @@ export function AdminMonetization() {
   const savePkgs = () => run("pkgs", () => api.post("/admin/monetization/packages", { packages: pkgs }), "Tabel harga tersimpan.");
   const saveBonus = () => run("bonus", () => api.post("/admin/monetization/bonus", bonus), "Bonus top up tersimpan.");
   const toggle = () => run("toggle", () => api.post("/admin/monetization/toggle", { enabled: !(d || {}).enabled }), "Status otomasi diubah.");
-  const credit = () => run("credit", () => api.post("/admin/monetization/wallet", { userId: creditFor, amount: Number(amount), note, bonus: withBonus }), "Saldo diperbarui.");
+  const credit = () => run("credit", () => api.post("/admin/monetization/wallet", { userId: creditFor, amount: Number(amount), note }), "Saldo diperbarui.");
 
   if (!d) return (<><AdminHead eyebrow="ADMIN" title="Paket & Kartu" /><Loading /></>);
   const s = d.stats || {};
@@ -84,7 +83,7 @@ export function AdminMonetization() {
       </section>
 
       <section className="admin-panel" data-testid="admin-wallets-panel">
-        <div className="section-row"><div><h2>Saldo dompet ({d.wallets.length})</h2><p>Top up transfer manual disetujui dengan menambah saldo di sini. Bonus top up pertama otomatis bila dicentang.</p></div></div>
+        <div className="section-row"><div><h2>Saldo dompet ({d.wallets.length})</h2><p>Koreksi saldo dicatat terpisah. Verifikasi top up dan bonus dilakukan melalui menu Pembayaran.</p></div></div>
         <div className="table-wrap">
           <table className="admin-table">
             <thead><tr><th>Pemilik</th><th>WhatsApp</th><th>Saldo</th><th>Masa gratis</th><th>Aksi</th></tr></thead>
@@ -95,7 +94,7 @@ export function AdminMonetization() {
                   <td>{w.whatsapp || "-"}</td>
                   <td><b>{money(w.balance)}</b></td>
                   <td>{w.trialUsed ? "sudah dipakai" : "belum dipakai"}</td>
-                  <td><Button className="btn-ghost" data-testid={`credit-open-${w.userId}`} onClick={() => { setCreditFor(creditFor === w.userId ? null : w.userId); setNote(""); setAmount(100000); }}>Tambah saldo</Button></td>
+                  <td><Button className="btn-ghost" data-testid={`credit-open-${w.userId}`} onClick={() => { setCreditFor(creditFor === w.userId ? null : w.userId); setNote(""); setAmount(100000); }}>Sesuaikan saldo</Button></td>
                 </tr>
               ))}
               {!d.wallets.length && <tr><td colSpan="5">Belum ada saldo.</td></tr>}
@@ -104,9 +103,8 @@ export function AdminMonetization() {
         </div>
         {creditFor && (
           <div className="credit-row" data-testid="credit-row">
-            <label>Nominal<input type="number" data-testid="credit-amount" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
-            <label>Catatan<input data-testid="credit-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. Top up transfer BCA 100rb" /></label>
-            <label className="check-line"><input type="checkbox" data-testid="credit-bonus" checked={withBonus} onChange={(e) => setWithBonus(e.target.checked)} /> Beri bonus top up pertama</label>
+            <label>Penyesuaian (+ / −)<input type="number" data-testid="credit-amount" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+            <label>Catatan<input data-testid="credit-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan koreksi saldo (wajib)" /></label>
             <Button data-testid="credit-submit" disabled={busy === "credit"} onClick={credit}>Simpan saldo</Button>
             <Button className="btn-ghost" onClick={() => setCreditFor(null)}>Batal</Button>
           </div>

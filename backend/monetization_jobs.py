@@ -185,7 +185,7 @@ class MonetizationJobs:
             await self._send(user, "empty", self._context(card, user), tpls, card["id"], dry)
 
     async def _auto_renew(self, cards, cfg, tpls, dry, actions):
-        """Auto-renew: kartu berisi website, autoRenew ON, masuk jendela H-3..H."""
+        """Auto-renew: kartu berisi website, toggle ON, pada hari berakhir."""
         pkgs = cfg.get("packages") or []
         for card in cards:
             user = await self._user(card["userId"])
@@ -208,7 +208,9 @@ class MonetizationJobs:
             if dry:
                 actions.append({"act": "renew_dry_run", "card": card["id"], "months": dec.get("months")})
                 continue
-            result = await self.svc.purchase(user, card["id"], dec.get("months") or 1, "wallet")
+            result = await self.svc.renew_card(user, card)
+            if not result:
+                continue
             actions.append({"act": "renew_ok", "card": card["id"], "months": dec.get("months"),
                             "price": dec.get("price")})
             u2 = await self._user(card["userId"])
@@ -265,10 +267,12 @@ class MonetizationJobs:
         tpls = await self._templates()
         actions = []
         cards = await self.db.cards.find({}, {"_id": 0}).to_list(length=10000)
+        await self._auto_renew(cards, cfg, tpls, dry_run, actions)
+        if not dry_run:
+            cards = await self.db.cards.find({}, {"_id": 0}).to_list(length=10000)
         await self._sync_websites(cards, tpls, dry_run, actions)
         await self._remind_expiry(cards, tpls, dry_run, actions)
         await self._remind_empty(cards, tpls, dry_run, actions)
-        await self._auto_renew(cards, cfg, tpls, dry_run, actions)
         await self._delete_empty(cards, tpls, dry_run, actions)
         users = await self.db.users.find({"role": {"$ne": "ADMIN"}}, {"_id": 0}).to_list(length=2000)
         await self._remind_no_website(users, tpls, cfg, dry_run, actions)

@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import DuplicateKeyError
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
@@ -30,6 +30,7 @@ except Exception:  # pragma: no cover - SEO module must never break the API
     SEOGenerator = None
 
 import wa_service
+from billing import payment_status
 from wa_templates import render_template, rupiah
 
 try:
@@ -189,7 +190,7 @@ def now(): return datetime.now(timezone.utc).isoformat()
 def uid(): return str(uuid.uuid4())
 def public(doc):
     if not doc: return None
-    return {k: v for k, v in doc.items() if k not in ("_id", "password_hash")}
+    return {k: v for k, v in doc.items() if k not in ("_id", "password_hash", "walletReceipts")}
 def hash_password(value): return bcrypt.hashpw(value.encode(), bcrypt.gensalt()).decode()
 def verify_password(value, hashed):
     try:
@@ -1526,7 +1527,7 @@ async def create_payment(data: PaymentCreateInput, user=Depends(current_user)):
     if data.proofUrl:
         file_id = data.proofUrl.rsplit("/", 1)[-1]
         proof = await db.files.find_one({"id": file_id, "userId": user["id"]}, {"_id": 0, "contentType": 1})
-        if not proof or proof.get("contentType") not in {"image/jpeg", "image/png", "image/webp"}:
+        if not proof or proof.get("contentType") not in {"image/jpeg", "image/png"}:
             raise HTTPException(400, "Bukti pembayaran harus berupa gambar milik akun Anda.")
     settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or DEFAULT_SETTINGS
     add_price = settings.get("additionalWebsitePrice", ADDITIONAL_WEBSITE_PRICE)
@@ -1552,6 +1553,8 @@ async def create_payment(data: PaymentCreateInput, user=Depends(current_user)):
             amount = max(0, amount - dval)
         elif dtype == "days":
             coupon_days_added = int(dval)
+    if amount > 0 and not data.proofUrl:
+        raise HTTPException(400, "Bukti transfer JPG atau PNG wajib diunggah.")
     payment = {"id": uid(), "userId": user["id"], "userEmail": user["email"], "userName": user.get("name", ""), "planSlug": data.planSlug, "planName": plan["name"], "amount": amount, "originalAmount": float(plan["monthlyPrice"]) + extra * add_price, "additionalWebsiteCount": extra, "additionalWebsitePrice": add_price, "transferDate": data.transferDate, "proofUrl": data.proofUrl, "notes": data.notes, "couponCode": (coupon["code"] if coupon else ""), "couponDaysAdded": coupon_days_added, "status": "PENDING", "createdAt": now()}
     await db.payments.insert_one(payment)
     if coupon:
@@ -1561,7 +1564,7 @@ async def create_payment(data: PaymentCreateInput, user=Depends(current_user)):
 
     # ===== Notifikasi WhatsApp (tidak menggagalkan checkout bila gagal) =====
     async def _wa_order_notifications():
-        tpl_vars = dict(nama=user.get("name", ""), id=p["id"], paket=plan["name"],
+        tpl_vars = dict(nama=user.get("name", ""), id=payment["id"], paket=plan["name"],
                         total=rupiah(amount), email=user.get("email", ""))
         cust_msg = render_template("order_new_customer", **tpl_vars)
         await wa_service.send_text(db, user.get("whatsapp", ""), cust_msg,
@@ -1573,7 +1576,7 @@ async def create_payment(data: PaymentCreateInput, user=Depends(current_user)):
         try:
             await upsert_wa_contact(user.get("whatsapp", ""), name=user.get("name", ""),
                                     category=plan.get("name", ""), source="order",
-                                    user_id=p["userId"])
+                                    user_id=payment["userId"])
             await enrich_contact_from_website(user.get("whatsapp", ""))
         except Exception as e:
             log.warning("capture kontak order gagal: %s", e)
@@ -1593,7 +1596,7 @@ async def my_payments(user=Depends(current_user)):
     payments = await db.payments.find({"userId": user["id"]}, {"_id": 0}).sort("createdAt", -1).to_list(50)
     for p in payments:
         p["proofContentType"] = await _proof_content_type(p.get("proofUrl"))
-    return payments
+    return [await monetization.payment_view(p) for p in payments]
 
 @api.get("/payments/{pid}")
 async def get_payment(pid: str, user=Depends(current_user)):
@@ -1601,7 +1604,43 @@ async def get_payment(pid: str, user=Depends(current_user)):
     if not p or (p["userId"] != user["id"] and user.get("role") != "ADMIN"):
         raise HTTPException(404, "Pembayaran tidak ditemukan")
     p["proofContentType"] = await _proof_content_type(p.get("proofUrl"))
-    return p
+    return await monetization.payment_view(p)
+
+@api.post("/payments/{pid}/proof")
+async def upload_payment_proof(pid: str, file: UploadFile = File(...), user=Depends(current_user)):
+    from io import BytesIO
+    from PIL import Image, UnidentifiedImageError
+    from billing import EDITABLE
+    p = await monetization.payment_for(pid, user)
+    if payment_status(p) not in EDITABLE:
+        raise HTTPException(409, "Bukti sedang diperiksa atau pembayaran telah selesai.")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Ukuran bukti maksimal 8 MB.")
+    if Path(file.filename or "").suffix.lower() not in {".jpg", ".jpeg", ".png"} or file.content_type not in {"image/jpeg", "image/png"}:
+        raise HTTPException(400, "Bukti transfer hanya menerima JPG atau PNG, bukan PDF atau format lain.")
+    try:
+        with Image.open(BytesIO(data)) as image:
+            if image.format not in {"JPEG", "PNG"} or image.width * image.height > 40_000_000:
+                raise ValueError("Unsupported image")
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(400, "Bukti harus berupa gambar JPG atau PNG yang valid.")
+    await file.seek(0)
+    uploaded = await upload_file(file, user)
+    return await monetization.save_proof(pid, user, uploaded["url"])
+
+@api.delete("/payments/{pid}/proof")
+async def delete_payment_proof(pid: str, user=Depends(current_user)):
+    return await monetization.save_proof(pid, user, None)
+
+@api.post("/payments/{pid}/submit")
+async def submit_payment_proof(pid: str, user=Depends(current_user)):
+    return await monetization.submit_proof(pid, user)
+
+@api.get("/payments/{pid}/whatsapp")
+async def payment_whatsapp(pid: str, user=Depends(current_user)):
+    return await monetization.whatsapp_link(pid, user)
 
 @api.get("/admin/overview")
 async def admin_overview(_=Depends(admin_user)):
@@ -1818,7 +1857,7 @@ async def legacy_article_redirect(request: Request, article_slug: str):
 
 class AdminWalletInput(BaseModel):
     userId: str
-    amount: int
+    amount: int = Field(strict=True)
     note: str = ""
     bonus: bool = False
 
@@ -1838,7 +1877,8 @@ async def admin_wallet_adjust(data: AdminWalletInput, _=Depends(admin_user)):
     """Tambah/kurangi saldo dompet user (mis. approve top up transfer manual)."""
     u = await db.users.find_one({"id": data.userId}, {"_id": 0})
     if not u: raise HTTPException(404, "User tidak ditemukan")
-    res = await monetization.admin_credit(data.userId, data.amount, data.note, bool(data.bonus))
+    res = await monetization.admin_credit(data.userId, data.amount, data.note)
+    await log_activity(_["id"], "adjust_wallet", data.userId, notes=f"{data.amount}: {data.note}")
     return {"ok": True, **res}
 
 @api.post("/admin/monetization/packages")
@@ -1922,7 +1962,8 @@ async def admin_monetization_summary(_=Depends(admin_user)):
 
 @api.get("/admin/payments")
 async def admin_payments(_=Depends(admin_user)):
-    return await db.payments.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
+    payments = await db.payments.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
+    return [await monetization.payment_view(p) for p in payments]
 
 @api.get("/admin/payments/{pid}")
 async def admin_payment_detail(pid: str, _=Depends(admin_user)):
@@ -1930,15 +1971,23 @@ async def admin_payment_detail(pid: str, _=Depends(admin_user)):
     if not p: raise HTTPException(404, "Pembayaran tidak ditemukan")
     u = await db.users.find_one({"id": p["userId"]}, {"_id": 0, "password_hash": 0})
     p["proofContentType"] = await _proof_content_type(p.get("proofUrl"))
-    return {**p, "user": public(u) if u else None}
+    return {**(await monetization.payment_view(p)), "user": public(u) if u else None}
+
+class PaymentApprovalInput(BaseModel):
+    approvedAmount: Optional[int] = Field(default=None, gt=0, strict=True)
+    note: str = Field(default="", max_length=1000)
+
+@api.post("/admin/payments/{pid}/revision")
+async def request_payment_revision(pid: str, data: PaymentRejectInput, admin=Depends(admin_user)):
+    return await monetization.review_payment(pid, admin, "NEEDS_REVISION", data.reason)
 
 @api.post("/admin/payments/{pid}/approve")
-async def approve_payment(pid: str, admin=Depends(admin_user)):
+async def approve_payment(pid: str, data: Optional[PaymentApprovalInput] = None, admin=Depends(admin_user)):
     p = await db.payments.find_one({"id": pid}, {"_id": 0})
     if not p: raise HTTPException(404, "Pembayaran tidak ditemukan")
     # Fase 2: top up saldo & pembelian kartu diproses layanan monetisasi
     if p.get("kind") in ("topup", "card"):
-        return await monetization.apply_payment(p, admin)
+        return await monetization.apply_payment(p, admin, data.approvedAmount if data else None, data.note if data else "")
     if p.get("status") != "PENDING": raise HTTPException(400, "Pembayaran ini sudah diproses.")
     plan = await db.plans.find_one({"slug": p["planSlug"]}, {"_id": 0})
     if not plan: raise HTTPException(400, "Paket tidak ditemukan")
@@ -1973,6 +2022,8 @@ async def approve_payment(pid: str, admin=Depends(admin_user)):
 async def reject_payment(pid: str, data: PaymentRejectInput, admin=Depends(admin_user)):
     p = await db.payments.find_one({"id": pid}, {"_id": 0})
     if not p: raise HTTPException(404, "Pembayaran tidak ditemukan")
+    if p.get("kind") in ("topup", "card"):
+        return await monetization.review_payment(pid, admin, "REJECTED", data.reason)
     if p.get("status") != "PENDING": raise HTTPException(400, "Pembayaran ini sudah diproses.")
     if not data.reason.strip(): raise HTTPException(400, "Alasan penolakan wajib diisi")
     await db.payments.update_one({"id": pid}, {"$set": {"status": "REJECTED", "reviewedAt": now(), "reviewedBy": admin["id"], "adminNotes": data.reason}})
@@ -2969,6 +3020,19 @@ async def startup():
     if not await db.settings.find_one({"id": "platform"}):
         await db.settings.insert_one({**DEFAULT_SETTINGS, "createdAt": now()})
 
+    # Billing sekarang menawarkan perpanjangan otomatis bulanan sebagai
+    # default.  Field preference membedakan kartu lama dari pilihan user baru:
+    # Kartu lama yang belum pernah menyimpan preferensi memakai default baru.
+    # Toggle setelah pembaruan ini akan menyimpan preferensinya sendiri.
+    await db.cards.update_many(
+        {"websiteId": {"$ne": None}, "autoRenewPreference": {"$exists": False}},
+        {"$set": {"autoRenew": True, "autoRenewPreference": True, "renewalMonths": 1}},
+    )
+    await db.cards.update_many(
+        {"renewalMonths": {"$exists": False}},
+        {"$set": {"renewalMonths": 1}},
+    )
+
     admin_email = (os.environ.get("ADMIN_EMAIL") or "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD") or ""
     if REQUIRE_ADMIN_MFA and not ADMIN_TOTP_SECRET:
@@ -3043,7 +3107,7 @@ async def _monetization_daily_loop():
                 log.info("monetization job harian: %s", rep.get("summary"))
         except Exception as exc:
             log.warning("monetization job gagal: %s", exc)
-        await asyncio.sleep(86400)
+        await asyncio.sleep(300)
 
 
 @app.on_event("startup")

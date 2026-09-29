@@ -1,279 +1,130 @@
-import { useEffect, useRef, useState } from "react";
-import { Wallet, RefreshCw, Plus, Calendar, MessageCircle } from "lucide-react";
-import { Link } from "react-router-dom";
-import { api, errorText, money, formatDate } from "../lib/api";
-import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Wallet, Plus, CalendarDays, ArrowUpRight, Gift, History } from "lucide-react";
+import { api, errorText, formatDate, formatDateTime } from "../lib/api";
+import { Button, FormError, Loading } from "../lib/shared";
+import { BillingModal, PaymentStatus, paymentPath, rupiah } from "../components/BillingUI";
 import "./Subscription.css";
 
-const TOPUP_QUICK = [100000, 200000, 500000, 1000000];
-const FILTERS = [
-  ["all", "Semua transaksi"],
-  ["in", "Top up"],
-  ["out", "Penggunaan"],
-];
+const savedSelection = () => {
+  try { return JSON.parse(sessionStorage.getItem("billing-selection")) || null; } catch { return null; }
+};
 
 export function Subscription() {
-  const [view, setView] = useState(null);
-  const [wallet, setWallet] = useState(null);
-  const [sites, setSites] = useState([]);
-  const [topupAmount, setTopupAmount] = useState(100000);
-  const [customOpen, setCustomOpen] = useState(false);
-  const [pickFor, setPickFor] = useState(null);
-  const [pickedMonths, setPickedMonths] = useState(null);
-  const [histFilter, setHistFilter] = useState("all");
+  const nav = useNavigate();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
-  const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
-  const topupRef = useRef(null);
-  const amountRef = useRef(null);
-  const autoPicked = useRef(false);
-
-  const load = async () => {
-    const [c, w, d] = await Promise.all([api.get("/cards"), api.get("/wallet"), api.get("/dashboard")]);
-    setView(c.data);
-    setWallet(w.data);
-    setSites(d.data.websites || []);
-    const tied = (c.data.cards || []).filter((x) => x.websiteId);
-    if (!autoPicked.current && tied.length === 1) {
-      autoPicked.current = true;
-      setPickFor(tied[0].id);
-      const firstPkg = (c.data.packages || [])[0];
-      if (firstPkg) setPickedMonths(firstPkg.months);
-    }
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [amount, setAmount] = useState(100000);
+  const [selection, setSelection] = useState(savedSelection);
+  const [durationOpen, setDurationOpen] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const load = useCallback(async () => {
+    const [cards, wallet, dashboard, payments] = await Promise.all([
+      api.get("/cards"), api.get("/wallet"), api.get("/dashboard"), api.get("/payments/mine"),
+    ]);
+    setData({ ...cards.data, wallet: wallet.data, websites: dashboard.data.websites || [], payments: payments.data });
+  }, []);
+  useEffect(() => { load().catch(e => setError(errorText(e))); }, [load]);
+  useEffect(() => {
+    const refresh = () => load().catch(() => {});
+    window.addEventListener("focus", refresh);
+    const timer = setInterval(refresh, 30000);
+    return () => { window.removeEventListener("focus", refresh); clearInterval(timer); };
+  }, [load]);
+  const saveSelection = (next) => {
+    setSelection(next);
+    if (next) sessionStorage.setItem("billing-selection", JSON.stringify(next));
+    else sessionStorage.removeItem("billing-selection");
   };
-
-  useEffect(() => { load().catch((e) => setErr(errorText(e))); }, []);
-
-  const run = async (key, fn) => {
-    setBusy(key); setErr(""); setMsg("");
-    try {
-      const r = await fn();
-      await load();
-      setMsg((r && r.data && r.data.message) || "Berhasil");
-      return true;
-    } catch (e) {
-      setErr(errorText(e));
-      return false;
-    } finally { setBusy(""); }
+  const run = async (key, action) => {
+    setBusy(key); setError(""); setMessage("");
+    try { await action(); } catch (e) { setError(errorText(e)); } finally { setBusy(""); }
   };
+  if (!data) return <div className="billing"><FormError msg={error} />{!error && <Loading text="Memuat langganan..." />}</div>;
+  const { wallet, cards, packages: packages = [], websites, payments } = data;
+  const monthly = packages.find(p => p.months === 1);
+  const selectedPackage = packages.find(p => p.months === selection?.months) || packages[0];
+  const selectedCard = cards.find(c => c.id === selection?.cardId);
+  const siteName = c => websites.find(w => w.id === c.websiteId)?.businessName || c.name || "Website";
+  const bonus = wallet.topupBonus;
+  const eligible = !wallet.bonusClaimed && bonus?.enabled;
+  const bonusAmount = eligible && Number(amount) >= bonus.minTopup ? bonus.bonus : 0;
+  const invoiceIds = new Set(payments.map(p => p.id));
+  const rows = [
+    ...payments.map(p => ({ id: `invoice-${p.id}`, date: p.createdAt, type: p.kind === "topup" ? "topup" : "renewal",
+      title: p.kind === "topup" ? "Top up saldo" : p.itemLabel, amount: p.approvedAmount ?? p.amount,
+      status: p.status, payment: p, note: p.invoiceNumber })),
+    ...wallet.transactions.filter(t => !(t.type === "TOPUP" && invoiceIds.has(t.refId))).map(t => ({
+      id: t.id, date: t.createdAt, type: t.type === "TOPUP" || t.type === "BONUS" ? "topup" : t.type === "ADJUST" ? "adjust" : "renewal",
+      title: t.type === "BONUS" ? "Bonus pengguna pertama" : t.note || "Penyesuaian saldo",
+      amount: t.amount, status: "APPROVED", note: `Saldo setelah transaksi ${rupiah(t.balanceAfter)}`, tx: t,
+      payment: payments.find(p => p.id === t.refId),
+    })),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date)).filter(r => filter === "all" || r.type === filter);
+  const createInvoice = () => run("topup", async () => {
+    const r = await api.post("/wallet/topup", { amount: Number(amount), method: "transfer" });
+    nav(paymentPath(r.data.payment.id));
+  });
+  const buy = () => run("purchase", async () => {
+    const payload = { months: selectedPackage.months, method: "wallet" };
+    if (selection.cardId === "new") await api.post("/cards", payload);
+    else await api.post(`/cards/${selection.cardId}/purchase`, payload);
+    setDurationOpen(false); saveSelection(null); await load();
+    setMessage("Masa aktif berhasil ditambahkan. Transaksi tersimpan di Riwayat.");
+  });
+  const openDuration = (cardId) => { setError(""); saveSelection({ cardId, months: 1 }); setDurationOpen(true); };
+  const afterDate = selectedPackage && new Date(Math.max(Date.now(), new Date(selectedCard?.expiresAt || 0).getTime()) + selectedPackage.days * 86400000 - 86400000);
 
-  const extendCard = (id, m) => run(`ext-${id}-${m}`, () => api.post(`/cards/${id}/purchase`, { months: m, method: "wallet" }));
-  const toggleRenew = (id, on) => run(`ren-${id}`, () => api.patch(`/cards/${id}/autorenew`, { enabled: on }));
-  const topup = () => run("topup", () => api.post("/wallet/topup", { amount: Number(topupAmount), method: "transfer" }));
-
-  if (!view || !wallet) return <Loading text="Memuat saldo & masa aktif..." />;
-
-  const pkgs = view.packages || [];
-  const trial = view.trial || {};
-  const bonus = wallet.topupBonus || null;
-  const byId = {};
-  (sites || []).forEach((s) => { byId[s.id] = s; });
-  const cards = view.cards || [];
-  const attached = cards.filter((c) => c.websiteId);
-  const loose = cards.filter((c) => !c.websiteId);
-  const bonusNote = bonus
-    ? (wallet.bonusClaimed
-      ? `Bonus top up pertama sudah pernah diklaim. Minimal top up ${money(bonus.minTopup)}.`
-      : `Top up pertama minimal ${money(bonus.minTopup)} dapat bonus ${money(bonus.bonus)} — 1 kali per akun.`)
-    : `Top up pertama minimal ${money(100000)} dapat bonus ${money(50000)} — 1 kali per akun.`;
-  const pickedSite = pickFor ? (byId[(attached.find((c) => c.id === pickFor) || {}).websiteId] || {}) : {};
-  const curPkg = pkgs.find((p) => p.months === pickedMonths) || pkgs[0] || null;
-  const txs = (wallet.transactions || []).filter((t) => (
-    histFilter === "all" ? true : histFilter === "in" ? Number(t.amount) > 0 : Number(t.amount) < 0
-  ));
-  const focusTopup = () => {
-    setCustomOpen(true);
-    setTimeout(() => {
-      if (topupRef.current) topupRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (amountRef.current) amountRef.current.focus();
-    }, 60);
-  };
-
-  return (
-    <div className="page-wrap subx" data-testid="subscription-head">
-      <div className="subx-head">
-        <h1>Langganan</h1>
-        <p className="subx-sub">Kelola saldo, top up, dan tambah masa aktif website kamu.</p>
-      </div>
-      {msg && <div className="alert-ok" data-testid="subscription-ok">{msg}</div>}
-      {err && <FormError>{err}</FormError>}
-
-      <section className="subx-card" data-testid="balance-block">
-        <div className="subx-card-head">
-          <h2><Wallet size={18} /> Saldo Aktif</h2>
-          <button type="button" className="subx-topup-btn" onClick={focusTopup} data-testid="topup-open">
-            <Plus size={15} /> Top up
-          </button>
-        </div>
-        <div className="subx-balance" data-testid="wallet-balance">
-          <b>{money(wallet.balance)}</b>
-          <span>Saldo aktif</span>
-        </div>
-        <ul className="subx-notes">
-          <li>Saldo minimal top up {money(view.minTopup || 10000)}.</li>
-          <li data-testid="topup-bonus-note">{bonusNote}</li>
-          <li>Saldo dipakai untuk menambah masa aktif website.</li>
-        </ul>
-        <div className="subx-chip-row" ref={topupRef}>
-          {TOPUP_QUICK.map((a) => (
-            <button key={a} type="button" data-testid={`topup-quick-${a}`}
-              className={Number(topupAmount) === a && !customOpen ? "subx-chip active" : "subx-chip"}
-              onClick={() => { setCustomOpen(false); setTopupAmount(a); }}>
-              {money(a)}
-            </button>
-          ))}
-          <button type="button" data-testid="topup-quick-other"
-            className={customOpen ? "subx-chip active" : "subx-chip"} onClick={() => setCustomOpen(true)}>
-            Nominal lain
-          </button>
-        </div>
-        {customOpen && (
-          <div className="subx-fields">
-            <input className="input" type="number" min="10000" ref={amountRef} data-testid="topup-amount-input"
-              value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} />
+  return <div className="billing" data-testid="subscription-page">
+    <header className="billing-heading"><span className="billing-eyebrow">PAKET & BILLING</span><h1>Langganan</h1><p>Saldo, masa aktif, dan semua transaksi di satu tempat.</p></header>
+    {!topupOpen && !durationOpen && <FormError msg={error} />}
+    {message && <div className="billing-success" role="status">{message}</div>}
+    <section className="billing-card billing-balance" data-testid="balance-block">
+      <div><h2><Wallet size={19} /> Saldo Aktif</h2><strong data-testid="wallet-balance">{rupiah(wallet.balance)}</strong><p>Digunakan untuk memperpanjang masa aktif website.</p></div>
+      <Button data-testid="topup-open" onClick={() => { setError(""); setTopupOpen(true); }}><Plus size={16} /> Top up</Button>
+    </section>
+    <section className="billing-card" data-testid="active-block">
+      <div className="billing-section-head"><div><h2><CalendarDays size={19} /> Masa Aktif Website</h2><p>Kelola perpanjangan setiap website kamu.</p></div><span className="billing-count">{cards.filter(c => c.websiteId).length} website</span></div>
+      <div className="billing-sites">{cards.filter(c => c.websiteId).map(c => <article className="billing-site" key={c.id} data-testid={`card-${c.id}`}>
+        <div className="billing-section-head"><h3>{siteName(c)}</h3><span className={`billing-status ${c.expired ? "billing-status-rejected" : "billing-status-approved"}`}>{c.isTrialCard ? "Masa gratis" : c.stateLabel}</span></div>
+        <p><CalendarDays size={14} /> Sisa <b>{c.daysRemaining} hari</b> · Aktif s/d {formatDate(c.lastActiveDate)}</p>
+        <div className="billing-site-footer"><Button data-testid={`add-active-${c.id}`} variant="outline" onClick={() => openDuration(c.id)}><Plus size={16} /> Tambah masa aktif</Button>
+          <div className="billing-renew"><button type="button" role="switch" aria-checked={!!c.autoRenew} aria-label={`Perpanjangan otomatis ${siteName(c)}`} data-testid={`renew-${c.id}`} disabled={!!busy}
+            className={`billing-switch ${c.autoRenew ? "on" : ""}`} onClick={() => run(c.id, async () => { await api.patch(`/cards/${c.id}/autorenew`, { enabled: !c.autoRenew }); await load(); })}><span /></button>
+            <div><b>Perpanjangan otomatis bulanan</b><small>{monthly ? <>{rupiah(monthly.price)} / {monthly.days} hari {monthly.normalPrice > monthly.price && <del>{rupiah(monthly.normalPrice)}</del>}</> : "Paket bulanan belum tersedia"}</small><small>{c.autoRenew ? "Dipotong dari saldo saat masa aktif berakhir. Bisa dimatikan kapan saja." : "Nonaktif. Perpanjang secara manual sebelum masa aktif habis."}</small></div>
           </div>
-        )}
-        <div className="subx-cta">
-          <Button data-testid="topup-button" disabled={busy === "topup"} onClick={topup}>
-            {busy === "topup" ? "Mengirim..." : `Top up ${money(Number(topupAmount) || 0)}`}
-          </Button>
-          {wallet.adminWhatsapp && (
-            <a className="subx-wa" href={`https://wa.me/${wallet.adminWhatsapp}`} target="_blank" rel="noreferrer" data-testid="topup-wa-admin">
-              <MessageCircle size={14} /> WhatsApp admin
-            </a>
-          )}
         </div>
-        {wallet.bank && (
-          <div className="subx-bank" data-testid="bank-info">
-            <b>Transfer via {wallet.bank.bankName} {wallet.bank.accountNumber}</b>
-            <span>a.n. {wallet.bank.accountName}</span>
-            <small>Setelah transfer, kirim bukti ke admin melalui WhatsApp admin.</small>
-          </div>
-        )}
-      </section>
-
-      <section className="subx-card" data-testid="active-block">
-        <div className="subx-card-head">
-          <h2><Calendar size={18} /> Masa Aktif Website</h2>
-          <span className="subx-count">{attached.length} website</span>
-        </div>
-        <p className="subx-card-sub">Daftar website aktif dan masa aktifnya.</p>
-        {!attached.length && (
-          <p className="subx-empty-text">Belum ada website. Bikin website pertamamu untuk memakai masa gratis {trial && trial.days ? trial.days : 14} hari.</p>
-        )}
-        <div className="subx-sites">
-          {attached.map((c) => {
-            const site = byId[c.websiteId] || {};
-            const open = pickFor === c.id;
-            return (
-              <div key={c.id} className={open ? "subx-site active" : "subx-site"} data-testid={`card-${c.id}`}>
-                <div className="subx-site-head">
-                  <b>{site.businessName || site.slug || "website"}</b>
-                  <span className="subx-flags">
-                    <StatusBadge>{c.stateLabel}</StatusBadge>
-                    {c.isTrialCard && <span className="subx-tag">MASA GRATIS</span>}
-                  </span>
-                </div>
-                <div className="subx-site-meta">
-                  <span><Calendar size={14} /> Sisa <b>{c.daysRemaining} hari</b>{c.lastActiveDate ? ` — aktif s/d ${formatDate(c.lastActiveDate)}` : ""}</span>
-                </div>
-                <div className="subx-site-actions">
-                  <Button data-testid={`add-active-${c.id}`} onClick={() => {
-                    setPickFor(open ? null : c.id);
-                    if (pkgs.length) setPickedMonths(pkgs[0].months);
-                  }}>
-                    <Plus size={14} /> Tambahkan masa aktif
-                  </Button>
-                  <button type="button" className="subx-switch" data-testid={`renew-${c.id}`} disabled={!!busy}
-                    onClick={() => toggleRenew(c.id, !c.autoRenew)}>
-                    <span className={c.autoRenew ? "subx-switch-track on" : "subx-switch-track"} />
-                    <span className="subx-switch-label"><RefreshCw size={13} /> Auto renewal: {c.autoRenew ? "AKTIF" : "MATI"}</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {!!loose.length && (
-          <p className="subx-hint" data-testid="loose-cards">Ada {loose.length} masa aktif belum terpasang ke website — otomatis dipakai saat kamu bikin website baru.</p>
-        )}
-      </section>
-
-      {!!pkgs.length && (
-        <section className="subx-card" data-testid={`picker-${pickFor || "none"}`}>
-          <div className="subx-card-head">
-            <h2><Calendar size={18} /> Pilih Durasi Masa Aktif</h2>
-          </div>
-          <p className="subx-card-sub">
-            {pickFor
-              ? <>Tambah masa aktif untuk website <b>{pickedSite.businessName || pickedSite.slug || "ini"}</b>.</>
-              : "Pilih website di atas dulu untuk menambah masa aktifnya."}
-          </p>
-          <div className="subx-tabs">
-            {pkgs.map((p) => (
-              <button key={p.months} type="button" data-testid={`pkg-tab-${p.months}`}
-                disabled={!pickFor}
-                className={curPkg && curPkg.months === p.months ? "subx-tab active" : "subx-tab"}
-                onClick={() => setPickedMonths(p.months)}>
-                {p.monthLabel}
-              </button>
-            ))}
-          </div>
-          {curPkg && (
-            <div className="subx-pkg" data-testid="pkg-detail">
-              <div className="subx-pkg-price">
-                <b>{money(curPkg.price)}</b>
-                <span>/{curPkg.months === 1 ? "bln" : curPkg.monthLabel}</span>
-              </div>
-              <div className="subx-pkg-badges">
-                {!!curPkg.savingLabel && <span className="subx-tag">{curPkg.savingLabel}</span>}
-                {!!curPkg.perMonth && <span className="subx-setara">Setara {money(curPkg.perMonth)}/bulan</span>}
-                {!!curPkg.normalPrice && Number(curPkg.normalPrice) > Number(curPkg.price) && (
-                  <span className="subx-normal">Harga normal {money(curPkg.normalPrice)}</span>
-                )}
-              </div>
-              <Button data-testid={pickFor ? `extend-${pickFor}-${curPkg.months}` : "extend-none"}
-                disabled={!pickFor || busy === `ext-${pickFor}-${curPkg.months}`}
-                onClick={() => pickFor && extendCard(pickFor, curPkg.months)}>
-                {busy === `ext-${pickFor}-${curPkg.months}` ? "Memproses..." : `Pesan ${money(curPkg.price)}`}
-              </Button>
-              {wallet.balance <= 0 && (
-                <p className="subx-hint">Saldo kamu masih 0 — top up dulu di bagian Saldo Aktif di atas.</p>
-              )}
-            </div>
-          )}
-        </section>
-      )}
-
-      <section className="subx-card" data-testid="transactions-block">
-        <div className="subx-card-head">
-          <h2>Riwayat Saldo</h2>
-          <select className="subx-filter" value={histFilter} data-testid="hist-filter"
-            onChange={(e) => setHistFilter(e.target.value)}>
-            {FILTERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </div>
-        <div className="subx-hist">
-          {txs.map((t, i) => (
-            <div key={i} className="subx-hist-row">
-              <span>{t.note || t.type}</span>
-              <b className={Number(t.amount) < 0 ? "out" : "in"}>
-                {Number(t.amount) < 0 ? "-" : "+"}{money(Math.abs(Number(t.amount)))} • {formatDate(t.createdAt)}
-              </b>
-            </div>
-          ))}
-        </div>
-        {!txs.length && (
-          <p className="subx-empty-text">
-            Belum ada transaksi saldo. Transaksi saldo akan muncul di sini setelah kamu top up atau menggunakan saldo.
-          </p>
-        )}
-      </section>
-
-      <p className="subx-note" data-testid="cards-help">
-        Website otomatis beku jika masa aktifnya habis. Tambahkan masa aktif sebelum tanggal berakhir supaya website tetap online.{" "}
-        <Link to="/dashboard">Kembali ke dashboard</Link>
-      </p>
-    </div>
-  );
+      </article>)}</div>
+      {!cards.some(c => c.websiteId) && <p className="billing-empty">Belum ada website. Buat website pertama untuk memakai masa gratis {data.trial?.days || 14} hari.</p>}
+      {cards.filter(c => !c.websiteId && c.daysRemaining > 0).map(c => <div className="billing-loose" key={c.id}><span><b>{c.name}</b> · {c.daysRemaining} hari tersedia</span><Link data-testid={`use-card-${c.id}`} to="/dashboard/websites/create">Buat website <ArrowUpRight size={14} /></Link></div>)}
+      <div className="billing-bottom-link"><button data-testid="buy-new-card" onClick={() => openDuration("new")}>+ Beli masa aktif untuk website baru</button></div>
+      {selection && !durationOpen && <div className="billing-resume"><span>Pilihan masa aktifmu tersimpan.</span><Button variant="outline" data-testid="resume-purchase" onClick={() => setDurationOpen(true)}>Lanjutkan perpanjangan</Button></div>}
+    </section>
+    <section className="billing-card" data-testid="billing-history">
+      <div className="billing-section-head"><h2><History size={19} /> Riwayat</h2><select aria-label="Filter riwayat" data-testid="history-filter" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">Semua transaksi</option><option value="topup">Top up & bonus</option><option value="renewal">Perpanjangan</option><option value="adjust">Penyesuaian saldo</option></select></div>
+      {!rows.length && <p className="billing-empty">Belum ada transaksi. Tagihan dan aktivitas saldo akan muncul di sini.</p>}
+      <div className="billing-history">{rows.map(r => <div className="billing-history-row" key={r.id} data-testid={`history-${r.id}`}>
+        <div className="billing-history-info"><b>{r.title}</b><small>{formatDateTime(r.date)} · {r.note}</small></div>
+        <b className={r.amount > 0 && (r.tx || (r.type === "topup" && r.status === "APPROVED")) ? "billing-positive" : ""}>{r.amount > 0 && (r.tx || (r.type === "topup" && r.status === "APPROVED")) ? "+" : ""}{rupiah(r.amount)}</b><PaymentStatus status={r.status} />
+        {r.payment ? <Link data-testid={`history-detail-${r.id}`} to={paymentPath(r.payment.id)}>{r.status === "AWAITING_PAYMENT" ? "Upload bukti transfer" : r.status === "PROOF_DRAFT" ? "Lanjutkan pengiriman" : r.status === "NEEDS_REVISION" ? "Upload ulang bukti" : "Lihat detail"} →</Link> : <span />}
+      </div>)}</div>
+    </section>
+    <BillingModal open={topupOpen} onOpenChange={setTopupOpen} busy={!!busy} testId="topup-modal" title="Top up saldo" description="Pilih nominal. Saldo masuk setelah pembayaran diverifikasi admin.">
+      <div className="billing-amounts">{[50000, 100000, 200000, 500000].filter(a => a >= wallet.minTopup).map(a => <button data-testid={`topup-amount-${a}`} key={a} aria-pressed={Number(amount) === a} className={Number(amount) === a ? "selected" : ""} onClick={() => setAmount(a)}>{rupiah(a)}</button>)}</div>
+      <label className="billing-field">Nominal top up<input data-testid="topup-amount-input" type="number" inputMode="numeric" min={wallet.minTopup} step="1" value={amount} onChange={e => setAmount(e.target.value)} /><small>Minimal {rupiah(wallet.minTopup)}.</small></label>
+      {eligible && <div className="billing-bonus"><Gift size={19} /><span>Top up pertama minimal {rupiah(bonus.minTopup)}, dapat bonus saldo {rupiah(bonus.bonus)}.</span></div>}
+      <div className="billing-summary"><div><span>Total transfer</span><b>{rupiah(amount)}</b></div>{bonusAmount > 0 && <div><span>Bonus pengguna pertama</span><b className="billing-positive">+{rupiah(bonusAmount)}</b></div>}<div className="billing-total"><span>Saldo yang akan masuk</span><b>{rupiah(Number(amount) + bonusAmount)}</b></div></div>
+      <FormError msg={error} /><Button data-testid="create-invoice" disabled={!!busy || !Number.isSafeInteger(Number(amount)) || Number(amount) < wallet.minTopup} onClick={createInvoice}>{busy === "topup" ? "Membuat tagihan..." : `Buat tagihan ${rupiah(amount)}`}</Button>
+    </BillingModal>
+    <BillingModal open={durationOpen} onOpenChange={setDurationOpen} busy={!!busy} testId="duration-modal" title="Tambah masa aktif" description={selectedCard ? siteName(selectedCard) : "Masa aktif untuk website baru. Hari mulai dihitung setelah pembelian."}>
+      <div className="billing-durations">{packages.map(p => <button data-testid={`duration-${p.months}`} key={p.months} aria-pressed={selectedPackage?.months === p.months} className={selectedPackage?.months === p.months ? "selected" : ""} onClick={() => saveSelection({ ...selection, months: p.months })}><b>{p.monthLabel}</b><span>{rupiah(p.price)}</span></button>)}</div>
+      {selectedPackage && <><div className="billing-package"><strong>{rupiah(selectedPackage.price)}</strong>{selectedPackage.normalPrice > selectedPackage.price && <del>{rupiah(selectedPackage.normalPrice)}</del>}<p>{selectedPackage.savingLabel} · {selectedPackage.days} hari</p></div>
+        <div className="billing-summary"><div><span>Saldo tersedia</span><b>{rupiah(wallet.balance)}</b></div><div><span>Masa aktif bertambah</span><b>{selectedPackage.days} hari</b></div><div><span>Aktif hingga</span><b>{formatDate(afterDate)}</b></div></div>
+        <FormError msg={error} />{wallet.balance >= selectedPackage.price ? <Button data-testid="purchase-duration" disabled={!!busy} onClick={buy}>{busy === "purchase" ? "Memproses..." : `Bayar ${rupiah(selectedPackage.price)} dari saldo`}</Button> : <><p className="billing-hint">Saldo kurang {rupiah(selectedPackage.price - wallet.balance)}. Pilihan ini tersimpan sampai kamu melanjutkan.</p><Button data-testid="purchase-topup" onClick={() => { setDurationOpen(false); setAmount(Math.max(wallet.minTopup, selectedPackage.price - wallet.balance)); setTopupOpen(true); }}>Top up saldo</Button></>}
+      </>}
+    </BillingModal>
+  </div>;
 }
