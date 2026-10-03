@@ -1,3 +1,4 @@
+import BusinessSiteHero from "../components/BusinessSiteHero";
 import BusinessSiteNav from "../components/BusinessSiteNav";
 import { useEffect, useState } from "react";
 import {
@@ -199,7 +200,8 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       {/* 1. TOPBAR / NAVBAR */}
       <BusinessSiteNav data={data} articleUrl={articleCount > 0 ? articlesUrl : ""} />
 
-      {/* 2. HERO BANNER SECTION */}
+      {/* Hero khas template, section dan navigasi tetap berbagi komponen. */}
+      {templateStyle !== "modern" && ["warm", "bold", "minimal", "playful"].includes(templateStyle) ? <BusinessSiteHero template={templateStyle} data={data} c={c} bgUrl={bgUrl} coverStyle={coverStyle} products={products} wa={wa} /> : (
       <section
         className="public-hero"
         style={{
@@ -267,6 +269,8 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
           </div>
         </div>
       </section>
+
+      )}
 
       {/* 3. TENTANG KAMI / STORY SECTION */}
       {(c.about || data.description) && (

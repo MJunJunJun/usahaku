@@ -2468,3 +2468,22 @@
 .public-site.template-bold .public-testimonials-section{background:#111827}
 .public-site.template-bold .testimonial-card{color:#f1f5f9}
 .public-site.template-bold .testimonial-card p{color:#cbd5e1}
+
+/* Original template heroes, with the saved theme instead of fixed colors. */
+.public-site.template-warm .warm-copy>a{background:var(--pri)}
+.public-site.template-warm .warm-copy small{color:var(--pri)}
+.public-site.template-bold .bold-headline>a{background:var(--pri);color:#fff}
+.public-site.template-bold .bold-headline small,.public-site.template-bold .bold-facts b{color:color-mix(in srgb,var(--pri) 45%,white)}
+.public-site.template-minimal .minimal-hero a{color:var(--pri)}
+.public-site.template-minimal .minimal-hero figcaption{background:var(--acc)}
+.public-site.template-playful .playful-hero{background:color-mix(in srgb,var(--pri) 12%,white)}
+.public-site.template-playful .playful-copy a{background:var(--pri)}
+.public-site.template-playful .playful-copy>span,.public-site.template-playful .playful-picture b{color:var(--acc)}
+.public-site.template-playful .playful-picture i{background:var(--pri);color:#fff}
+.website-custom-colors>span{font-size:12px;color:#64748b;align-self:center}
+.public-site.embedded.preview-mobile .warm-hero,.public-site.embedded.preview-mobile .minimal-hero,.public-site.embedded.preview-mobile .playful-hero{grid-template-columns:1fr;gap:24px;padding:34px 20px}
+.public-site.embedded.preview-mobile .warm-hero>img,.public-site.embedded.preview-mobile .minimal-hero img,.public-site.embedded.preview-mobile .playful-picture img{height:270px}
+.public-site.embedded.preview-mobile .bold-hero{min-height:640px;padding:22px 24px}
+.public-site.embedded.preview-mobile .bold-headline{margin-top:125px}
+.public-site.embedded.preview-mobile .bold-headline h1{font-size:54px;letter-spacing:-3px}
+.public-site.embedded.preview-mobile .bold-facts{left:24px;right:24px;gap:13px;flex-wrap:wrap}

@@ -4,7 +4,7 @@ import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, Messa
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
-import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
+import { WEBSITE_TEMPLATES, COLOR_PALETTES, themeFromColor } from "../lib/templates";
 import PublicWebsiteView from "./PublicWebsiteView";
 import { SectionForm, makeRandomSections } from "./Sections";
 import { APP_NAME, publicSiteHost, publicSiteUrl } from "../lib/config";
@@ -758,8 +758,8 @@ export function WebsiteDetail() {
                   </button>)}
                 </div>
                 <div className="website-custom-colors">
-                  <label>Warna utama<input type="color" data-testid="website-primary-color" value={settingsPrimary} onChange={(e) => setSettingsPrimary(e.target.value)} /></label>
-                  <label>Warna aksen<input type="color" data-testid="website-accent-color" value={settingsAccent} onChange={(e) => setSettingsAccent(e.target.value)} /></label>
+                  <label>Warna custom<input type="color" data-testid="website-custom-color" value={settingsPrimary} onChange={(e) => { const theme = themeFromColor(e.target.value); setSettingsPrimary(theme.primary); setSettingsAccent(theme.accent); }} /></label>
+                  <span>Warna utama dan aksen otomatis menyesuaikan pilihan kamu.</span>
                 </div>
               </fieldset>
               <FormError msg={settingsError} />

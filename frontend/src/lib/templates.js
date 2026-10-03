@@ -56,3 +56,10 @@ export const COLOR_PALETTES = [
   { id: "charcoal", name: "Charcoal Premium", primary: "#1E293B", accent: "#0F172A" },
   { id: "teal", name: "Teal Fresh", primary: "#0D9488", accent: "#115E59" },
 ];
+
+// Darker shade of the chosen color keeps one hue across primary and accent.
+export const themeFromColor = (hex) => {
+  const primary = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toUpperCase() : "#0077B6";
+  const accent = "#" + primary.slice(1).match(/.{2}/g).map(channel => Math.round(parseInt(channel, 16) * 0.45).toString(16).padStart(2, "0")).join("").toUpperCase();
+  return { primary, accent };
+};

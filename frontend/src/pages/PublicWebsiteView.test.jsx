@@ -12,7 +12,7 @@ test.each(["modern", "warm", "bold", "minimal", "playful"])("%s renders all sect
   const container = document.createElement("div");
   container.innerHTML = renderToStaticMarkup(<PublicWebsiteView data={{ ...site, templateStyle }} embedded />);
   expect(container.querySelector(".public-nav")).not.toBeNull();
-  expect(container.querySelector(".public-hero").textContent).toContain("Hero Uji");
+  expect(container.querySelector(templateStyle === "modern" ? ".public-hero" : "." + templateStyle + "-hero").textContent).toContain("Hero Uji");
   for (const id of ["tentang", "keunggulan", "menu", "testimoni", "faq", "lokasi"]) {
     expect(container.querySelector('#' + id)).not.toBeNull();
     expect(container.querySelector('[href="#' + id + '"]')).not.toBeNull();
