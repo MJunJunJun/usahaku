@@ -2476,7 +2476,7 @@
 .public-site.template-bold .bold-headline small,.public-site.template-bold .bold-facts b{color:color-mix(in srgb,var(--pri) 45%,white)}
 .public-site.template-minimal .minimal-hero a{color:var(--pri)}
 .public-site.template-minimal .minimal-hero figcaption{background:var(--acc)}
-.public-site.template-playful .playful-hero{background:color-mix(in srgb,var(--pri) 12%,white)}
+.public-site.template-playful .playful-hero{background:transparent;border-radius:0}
 .public-site.template-playful .playful-copy a{background:var(--pri)}
 .public-site.template-playful .playful-copy>span,.public-site.template-playful .playful-picture b{color:var(--acc)}
 .public-site.template-playful .playful-picture i{background:var(--pri);color:#fff}
@@ -2490,3 +2490,7 @@
 
 /* Preserve owner-entered line breaks in opening hours across every template. */
 .public-site .hours-badge,.public-site .about-meta-item>span{white-space:pre-line}
+
+/* Keep author details readable on every Bold testimonial card. */
+.public-site.template-bold .testimonial-author b{color:#f1f5f9}
+.public-site.template-bold .testimonial-author small{color:#cbd5e1}
