@@ -46,3 +46,5 @@
 .public-site.template-playful.embedded.preview-mobile .playful-photo-frame img{height:100%}
 
 .photo-position-controls{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 0;font-size:12px;color:#475569}.photo-position-controls label{display:flex;align-items:center;gap:8px}.photo-position-controls input{width:110px}.photo-position-controls>span{flex-basis:100%}
+
+.photo-position-status{font-size:12px;color:#64748b;padding:8px 0}

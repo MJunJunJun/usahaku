@@ -24,16 +24,20 @@ beforeEach(() => { container = document.createElement("div"); document.body.appe
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); jest.clearAllMocks(); });
 
 
-test("photo crop opens with saved position and saves an explicit reset", async () => {
+test("dragging in the preview saves on release without an edit or save button", async () => {
  const site={id:'site',businessName:'Uji',products:[],templateStyle:'playful',themeConfig:{coverPosition:{x:75,y:25}},aiGeneratedContent:{heroTitle:'Uji'}};
- api.get.mockResolvedValue({data:site});api.put.mockResolvedValue({data:{...site,themeConfig:{coverPosition:{x:50,y:50}}}});
+ api.get.mockResolvedValue({data:site});api.put.mockResolvedValue({data:site});
  await act(async () => root.render(<MemoryRouter><WebsiteDetail /></MemoryRouter>));
- await act(async () => container.querySelector('[data-testid="edit-cover-position"]').click());
- expect(container.querySelector('[data-testid="cover-position-x"]').value).toBe('75');
- expect(container.querySelector('[data-testid="cover-position-y"]').value).toBe('25');
- expect(container.querySelector('[data-testid="draggable-cover-image"]')).not.toBeNull();
- await act(async () => container.querySelector('[data-testid="reset-cover-position"]').click());
- await act(async () => container.querySelector('[data-testid="save-cover-position"]').click());
- expect(api.put).toHaveBeenCalledWith('/websites/undefined/theme',{coverPosition:{x:50,y:50}});
- expect(container.querySelector('[data-testid="draggable-cover-image"]')).toBeNull();
+ expect(container.querySelector('[data-testid="edit-cover-position"]')).toBeNull();
+ const img=container.querySelector('[data-testid="draggable-cover-image"]');
+ for (const [key,value] of Object.entries({naturalWidth:800,naturalHeight:400,clientWidth:400,clientHeight:400})) Object.defineProperty(img,key,{value});
+ img.setPointerCapture=jest.fn();img.hasPointerCapture=()=>true;img.releasePointerCapture=jest.fn();
+ await act(async () => img.dispatchEvent(new MouseEvent('pointerdown',{bubbles:true,clientX:100,clientY:100,button:0})));
+ await act(async () => img.dispatchEvent(new MouseEvent('pointermove',{bubbles:true,clientX:180,clientY:100})));
+ expect(api.put).not.toHaveBeenCalled();
+ await act(async () => img.dispatchEvent(new MouseEvent('pointerup',{bubbles:true})));
+ expect(api.put).toHaveBeenCalledTimes(1);
+ expect(api.put).toHaveBeenCalledWith('/websites/undefined/theme',{coverPosition:{x:55,y:25}});
+ expect(container.querySelector('[data-testid="save-cover-position"]')).toBeNull();
+ expect(container.querySelector('[data-testid="draggable-cover-image"]').style.objectPosition).toBe('55% 25%');
 });

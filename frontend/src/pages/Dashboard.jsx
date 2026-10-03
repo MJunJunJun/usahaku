@@ -679,11 +679,10 @@ export function WebsiteDetail() {
   const [settingsError, setSettingsError] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [isFreePlan, setIsFreePlan] = useState(false);
-  const [editingPhoto, setEditingPhoto] = useState(false);
-  const [photoPosition, setPhotoPosition] = useState({ x: 50, y: 50 });
+  const [photoPosition, setPhotoPosition] = useState(null);
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState("");
+  const [isFreePlan, setIsFreePlan] = useState(false);
   const [device, setDevice] = useState("desktop");
   const load = useCallback(() => api.get(`/websites/${id}`).then(r => setW(r.data)), [id]);
   const loadAnalytics = useCallback(() => api.get(`/websites/${id}/analytics`).then(r => setAnalytics(r.data)).catch(() => {}), [id]);
@@ -718,10 +717,13 @@ export function WebsiteDetail() {
     finally { setSavingTemplate(false); }
   };
 
-  const savePhoto = async () => {
+  const savePhoto = async (position) => {
     setSavingPhoto(true); setPhotoError("");
-    try { const r = await api.put("/websites/" + id + "/theme", { coverPosition: photoPosition }); setW(r.data); setEditingPhoto(false); }
-    catch (e) { setPhotoError(errorText(e)); }
+    try {
+      await api.put("/websites/" + id + "/theme", { coverPosition: position });
+      setW(current => ({ ...current, themeConfig: { ...current.themeConfig, coverPosition: position } }));
+      setPhotoPosition(null);
+    } catch (e) { setPhotoError("Posisi belum tersimpan. Geser foto lagi untuk mencoba. " + errorText(e)); }
     finally { setSavingPhoto(false); }
   };
   return (
@@ -816,19 +818,9 @@ export function WebsiteDetail() {
               <a data-testid="open-public-link" href={publicSiteUrl(w.slug)} target="_blank" rel="noreferrer" className="text-link">Buka {publicSiteHost(w.slug)} <ExternalLink size={14} /></a>
             )}
           </div>
-          {currentTemplate !== "modern" && <div className="photo-position-controls">
-            {!editingPhoto ? <Button data-testid="edit-cover-position" variant="outline" onClick={() => { setPhotoPosition(w.themeConfig?.coverPosition || { x: 50, y: 50 }); setPhotoError(""); setEditingPhoto(true); }}>Geser posisi foto</Button> : <>
-              <span>Geser foto hero untuk mengatur fokus. Bingkai tetap.</span>
-              <label>Horizontal<input data-testid="cover-position-x" type="range" min="0" max="100" value={photoPosition.x} disabled={savingPhoto} onChange={e => setPhotoPosition(p => ({ ...p, x: Number(e.target.value) }))} /></label>
-              <label>Vertikal<input data-testid="cover-position-y" type="range" min="0" max="100" value={photoPosition.y} disabled={savingPhoto} onChange={e => setPhotoPosition(p => ({ ...p, y: Number(e.target.value) }))} /></label>
-              <Button data-testid="reset-cover-position" variant="outline" disabled={savingPhoto} onClick={() => setPhotoPosition({x:50,y:50})}>Tengah</Button>
-              <Button data-testid="cancel-cover-position" variant="outline" disabled={savingPhoto} onClick={() => setEditingPhoto(false)}>Batal</Button>
-              <Button data-testid="save-cover-position" disabled={savingPhoto} onClick={savePhoto}>{savingPhoto ? "Menyimpan..." : "Simpan posisi"}</Button>
-            </>}
-            <FormError msg={photoError} />
-          </div>}
+          {currentTemplate !== "modern" && <div className="photo-position-status" role="status" data-testid="cover-autosave-status">{savingPhoto ? "Menyimpan posisi foto..." : photoError || "Klik dan seret foto hero. Posisi otomatis tersimpan setelah dilepas."}</div>}
           <div className={`device-frame device-${device}`}>
-            <PublicWebsiteView data={editingPhoto ? { ...w, themeConfig: { ...w.themeConfig, coverPosition: photoPosition } } : w} embedded device={device} onCoverPositionChange={editingPhoto && !savingPhoto ? setPhotoPosition : undefined} />
+            <PublicWebsiteView data={photoPosition ? { ...w, themeConfig: { ...w.themeConfig, coverPosition: photoPosition } } : w} embedded device={device} onCoverPositionChange={!savingPhoto ? setPhotoPosition : undefined} onCoverPositionCommit={savePhoto} />
           </div>
         </div>
       </div>

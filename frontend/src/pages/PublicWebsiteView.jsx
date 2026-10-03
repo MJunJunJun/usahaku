@@ -72,7 +72,7 @@ const getCategoryCover = (category, name) => {
   return "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=1200&auto=format&fit=crop";
 };
 
-export default function PublicWebsiteView({ data, embedded = false, device = "desktop", onCoverPositionChange }) {
+export default function PublicWebsiteView({ data, embedded = false, device = "desktop", onCoverPositionChange, onCoverPositionCommit }) {
   const articlesUrl = publicWebsiteHref(data.slug, "/artikel");
   const c = data.aiGeneratedContent || {};
   const primary = data.themeConfig?.primary || c.primaryColor || "#0077B6";
@@ -205,7 +205,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       <BusinessSiteNav data={data} articleUrl={articleCount > 0 ? articlesUrl : ""} />
 
       {/* Hero khas template, section dan navigasi tetap berbagi komponen. */}
-      {templateStyle !== "modern" && ["warm", "bold", "minimal", "playful"].includes(templateStyle) ? <BusinessSiteHero template={templateStyle} data={data} c={c} bgUrl={bgUrl} coverStyle={coverStyle} products={products} wa={wa} coverPosition={coverPosition} onCoverPositionChange={onCoverPositionChange} /> : (
+      {templateStyle !== "modern" && ["warm", "bold", "minimal", "playful"].includes(templateStyle) ? <BusinessSiteHero template={templateStyle} data={data} c={c} bgUrl={bgUrl} coverStyle={coverStyle} products={products} wa={wa} coverPosition={coverPosition} onCoverPositionChange={onCoverPositionChange} onCoverPositionCommit={onCoverPositionCommit} /> : (
       <section
         className="public-hero"
         style={{
