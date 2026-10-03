@@ -43,7 +43,7 @@ export function getShowcaseSite(slug) {
   return {
     id: `showcase-${entrySlug}`, slug: entrySlug, businessName, category, description,
     coverImageUrl: coverPhoto(entrySlug), logoUrl: logo(businessName, primary), whatsapp: "6281234567890", status: "PUBLISHED", templateStyle: style,
-    themeConfig: { primary, accent: primary, style },
+    themeConfig: { primary, accent: primary, style, ...(entrySlug === "rumah-roti" ? { coverPosition: { x: 100, y: 50 } } : {}) },
     aiGeneratedContent: {
       heroTitle, heroSubtitle: description, heroCta: "Lihat katalog", about: profile?.about || description, productHeadline: "Pilihan favorit",
       highlights: (profile?.highlights || []).map(([title, desc, icon]) => ({ title, desc, icon })),

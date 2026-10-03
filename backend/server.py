@@ -185,7 +185,7 @@ async def ensure_showcase_sites(admin_whatsapp: str):
             "id": website_id, "userId": showcase_owner_id, "isShowcase": True,
             "businessName": spec["name"], "category": spec["category"], "description": spec["description"],
             "logoUrl": f"/api/showcase/logo/{spec['slug']}", "coverImageUrl": f"/assets/showcase/{spec['slug'].replace('demo-', '')}-cover.png", "whatsapp": admin_whatsapp, "phone": "", "email": "", "instagram": "", "facebook": "", "tiktok": "", "address": "Indonesia", "city": "", "province": "", "postalCode": "", "latitude": None, "longitude": None, "customDomain": "", "status": "PUBLISHED", "slug": spec["slug"], "templateStyle": spec["style"],
-            "themeConfig": {"primary": spec["primary"], "accent": spec["primary"], "style": spec["style"]},
+            "themeConfig": {"primary": spec["primary"], "accent": spec["primary"], "style": spec["style"], **({"coverPosition": {"x": 100, "y": 50}} if spec["slug"] == "rumah-roti" else {})},
             "aiGeneratedContent": {"heroTitle": spec["hero"], "heroSubtitle": spec["description"], "heroCta": "Lihat katalog", "about": spec["description"], "highlights": ["Pilihan berkualitas", "Mudah dipesan", "Pelayanan ramah"], "productHeadline": "Pilihan favorit", "primaryColor": spec["primary"], "accentColor": spec["primary"], "style": spec["style"]},
             "businessHours": [], "updatedAt": now(), "createdAt": site.get("createdAt", now()) if site else now(),
         }
