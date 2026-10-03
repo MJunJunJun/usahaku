@@ -34,3 +34,13 @@
 @media(max-width:760px){.public-site.template-playful .playful-about-grid{grid-template-columns:1fr}.public-site.template-playful .playful-about-photo{grid-column:1;grid-row:auto;height:240px}}
 .public-site.template-playful.embedded.preview-mobile .playful-about-grid{grid-template-columns:1fr}
 .public-site.template-playful.embedded.preview-mobile .playful-about-photo{grid-column:1;grid-row:auto;height:240px}
+
+/* Organic silhouette traced from the approved reference, shared by image and white rim. */
+.public-site.template-playful .playful-photo-frame{width:100%;aspect-ratio:1.12;background:#fff;padding:4px}
+.public-site.template-playful .playful-photo-frame img{display:block;width:100%;height:100%;border:0;border-radius:0;object-fit:cover}
+.public-site.template-playful .playful-clip-defs{position:absolute;pointer-events:none}
+.public-site.template-playful .playful-picture b{display:flex;align-items:center;gap:6px;bottom:5%;right:3%;padding:9px 13px;font-size:11px}
+.public-site.template-playful .playful-photo-rays{top:5%;right:4%;width:26px;height:26px;font-size:0}
+.public-site.template-playful .playful-photo-rays:before,.public-site.template-playful .playful-photo-rays:after{content:'';position:absolute;width:2px;height:13px;background:var(--pri);border-radius:2px;transform:rotate(25deg);top:0;left:5px}
+.public-site.template-playful .playful-photo-rays:after{height:10px;transform:rotate(55deg);top:10px;left:17px}
+.public-site.template-playful.embedded.preview-mobile .playful-photo-frame img{height:100%}
