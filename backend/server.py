@@ -1022,11 +1022,17 @@ async def update_theme(site_id: str, data: ThemeInput, user=Depends(current_user
     ai = {**(site.get("aiGeneratedContent") or {})}
     if data.primary: theme["primary"] = data.primary
     if data.accent: theme["accent"] = data.accent
-    if data.style: theme["style"] = data.style
+    if data.style:
+        if data.style not in {"modern", "warm", "bold", "minimal", "playful"}:
+            raise HTTPException(422, "Template website tidak tersedia.")
+        theme["style"] = data.style
     if data.heroTitle is not None: ai["heroTitle"] = data.heroTitle
     if data.heroSubtitle is not None: ai["heroSubtitle"] = data.heroSubtitle
     if data.about is not None: ai["about"] = data.about
-    await db.websites.update_one({"id": site_id}, {"$set": {"themeConfig": theme, "aiGeneratedContent": ai, "updatedAt": now()}})
+    updates = {"themeConfig": theme, "aiGeneratedContent": ai, "updatedAt": now()}
+    if data.style:
+        updates["templateStyle"] = data.style
+    await db.websites.update_one({"id": site_id}, {"$set": updates})
     return await get_website(site_id, user)
 
 @api.put("/websites/{site_id}/sections")

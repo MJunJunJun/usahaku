@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile, FileText } from "lucide-react";
+import { ArrowRight, ChevronRight, ExternalLink, Plus, Sparkles, X, Store, MessageCircle, Check, Upload, Image as ImageIcon, Trash2, LayoutTemplate, Palette, CheckCircle2, Zap, Coffee, Smile, FileText, Settings } from "lucide-react";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { api, errorText, uploadFile, money, formatDate, resolveMediaUrl } from "../lib/api";
 import { Button, FormError, Loading, StatusBadge } from "../lib/shared";
 import { WEBSITE_TEMPLATES, COLOR_PALETTES } from "../lib/templates";
@@ -671,8 +672,15 @@ export function WebsiteDetail() {
   const [w, setW] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [device, setDevice] = useState("desktop");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState("modern");
+  const [settingsPrimary, setSettingsPrimary] = useState("#0077B6");
+  const [settingsAccent, setSettingsAccent] = useState("#03045E");
+  const [settingsError, setSettingsError] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [isFreePlan, setIsFreePlan] = useState(false);
+  const [device, setDevice] = useState("desktop");
   const load = useCallback(() => api.get(`/websites/${id}`).then(r => setW(r.data)), [id]);
   const loadAnalytics = useCallback(() => api.get(`/websites/${id}/analytics`).then(r => setAnalytics(r.data)).catch(() => {}), [id]);
   useEffect(() => { load(); loadAnalytics(); api.get("/auth/me").then(r => setIsFreePlan(r.data.planSlug === "trial")).catch(() => {}); }, [id, load, loadAnalytics]);
@@ -688,7 +696,22 @@ export function WebsiteDetail() {
   };
   const removeSite = async () => {
     if (!window.confirm(`Hapus website ${w.businessName}? Tindakan ini tidak bisa dibatalkan.`)) return;
-    try { await api.delete(`/websites/${id}`); nav("/dashboard/websites"); } catch (e) { alert(errorText(e)); }
+    setDeleting(true); setSettingsError("");
+    try { await api.delete(`/websites/${id}`); nav("/dashboard/websites"); } catch (e) { setSettingsError(errorText(e)); }
+    finally { setDeleting(false); }
+  };
+  const currentTemplate = w.templateStyle || w.themeConfig?.style || w.aiGeneratedContent?.style || "modern";
+  const currentPrimary = w.themeConfig?.primary || w.aiGeneratedContent?.primaryColor || "#0077B6";
+  const currentAccent = w.themeConfig?.accent || w.aiGeneratedContent?.accentColor || "#03045E";
+  const settingsChanged = selectedTemplate !== currentTemplate || settingsPrimary !== currentPrimary || settingsAccent !== currentAccent;
+  const saveTemplate = async () => {
+    setSavingTemplate(true); setSettingsError("");
+    try {
+      const r = await api.put(`/websites/${id}/theme`, { style: selectedTemplate, primary: settingsPrimary, accent: settingsAccent });
+      setW(r.data);
+      setSettingsOpen(false);
+    } catch (e) { setSettingsError(errorText(e)); }
+    finally { setSavingTemplate(false); }
   };
 
   return (
@@ -703,6 +726,61 @@ export function WebsiteDetail() {
           <Button data-testid="website-articles-top-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/articles`)}><FileText size={16} /> Artikel & promo</Button>
           <Button data-testid="sections-manager-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/sections`)}><LayoutTemplate size={16} /> Kelola section</Button>
           <Button data-testid="edit-manual-button" variant="outline" onClick={() => nav(`/dashboard/websites/${id}/edit`)}>Edit manual</Button>
+          <Dialog open={settingsOpen} onOpenChange={(open) => {
+            if (savingTemplate || deleting || busy) return;
+            if (open) { setSelectedTemplate(currentTemplate); setSettingsPrimary(currentPrimary); setSettingsAccent(currentAccent); setSettingsError(""); }
+            setSettingsOpen(open);
+          }}>
+            <DialogTrigger asChild>
+              <Button data-testid="website-settings-button" variant="outline"><Settings size={16} /> Pengaturan website</Button>
+            </DialogTrigger>
+            <DialogContent className="website-settings-dialog" closeTestId="website-settings-close">
+              <DialogHeader>
+                <DialogTitle>Pengaturan website</DialogTitle>
+                <DialogDescription>Pilih tampilan yang sesuai untuk {w.businessName} dan kelola website kamu.</DialogDescription>
+              </DialogHeader>
+              <fieldset className="website-template-options" disabled={savingTemplate || deleting || busy}>
+                <legend>Template website</legend>
+                <p>Konten website tetap dipertahankan. Pilih template dan warna sesuai identitas usaha. Perubahan langsung berlaku setelah disimpan.</p>
+                {WEBSITE_TEMPLATES.map((template) => (
+                  <label key={template.id} className={`website-template-option${selectedTemplate === template.id ? " selected" : ""}`}>
+                    <input type="radio" name="website-template" value={template.id} checked={selectedTemplate === template.id} onChange={() => setSelectedTemplate(template.id)} data-testid={`website-template-${template.id}`} />
+                    <span className="website-template-swatch" style={{ background: template.previewGradient }}><LayoutTemplate size={20} /></span>
+                    <span><b>{template.name}{currentTemplate === template.id && <small> · Saat ini</small>}</b><span>{template.desc}</span></span>
+                  </label>
+                ))}
+              </fieldset>
+              <fieldset className="website-color-options" disabled={savingTemplate || deleting || busy}>
+                <legend>Warna website</legend>
+                <div className="website-color-palettes">
+                  {COLOR_PALETTES.map((palette) => <button key={palette.id} type="button" data-testid={`website-color-${palette.id}`} aria-pressed={settingsPrimary === palette.primary && settingsAccent === palette.accent} onClick={() => { setSettingsPrimary(palette.primary); setSettingsAccent(palette.accent); }}>
+                    <span style={{ background: `linear-gradient(135deg, ${palette.primary}, ${palette.accent})` }} />{palette.name}
+                  </button>)}
+                </div>
+                <div className="website-custom-colors">
+                  <label>Warna utama<input type="color" data-testid="website-primary-color" value={settingsPrimary} onChange={(e) => setSettingsPrimary(e.target.value)} /></label>
+                  <label>Warna aksen<input type="color" data-testid="website-accent-color" value={settingsAccent} onChange={(e) => setSettingsAccent(e.target.value)} /></label>
+                </div>
+              </fieldset>
+              <FormError msg={settingsError} />
+              <div className="website-settings-actions">
+                <Button data-testid="website-settings-cancel" variant="outline" disabled={savingTemplate || deleting || busy} onClick={() => setSettingsOpen(false)}>Batal</Button>
+                <Button data-testid="save-website-template" disabled={savingTemplate || deleting || busy || !settingsChanged} onClick={saveTemplate}>{savingTemplate ? "Menyimpan..." : "Simpan pengaturan"}</Button>
+              </div>
+              {!w.aiGeneratedContent?.heroTitle && (
+                <div className="generate-callout">
+                  <Sparkles size={18} />
+                  <div><b>Website belum dibuat AI</b><span>Hasilkan konten pertama untuk website kamu.</span></div>
+                  <Button data-testid="generate-again-button" onClick={generate} disabled={busy || savingTemplate || deleting}>{busy ? "Membuat..." : "Generate"}</Button>
+                </div>
+              )}
+              <div className="website-settings-delete">
+                <div><b>Hapus website</b><p>{isFreePlan ? "Website Gratis tidak dapat dihapus. Upgrade paket untuk menghapus website." : "Website dan produk akan dihapus permanen. Tindakan ini tidak bisa dibatalkan."}</p></div>
+                <Button data-testid="delete-website-button" variant="outline" className="website-delete-button" disabled={isFreePlan || deleting || savingTemplate || busy} onClick={removeSite}><Trash2 size={15} />{deleting ? "Menghapus..." : "Hapus website"}</Button>
+              </div>
+              <Link data-testid="subscription-link" className="text-link" to="/dashboard/subscription">Kelola paket <ArrowRight size={15} /></Link>
+            </DialogContent>
+          </Dialog>
           <Button data-testid="publish-website-button" onClick={publish}>
             <ExternalLink size={16} /> {w.status === "PUBLISHED" ? "Perbarui online" : "Publish website"}
           </Button>
@@ -730,26 +808,6 @@ export function WebsiteDetail() {
           </div>
           <div className={`device-frame device-${device}`}>
             <PublicWebsiteView data={w} embedded device={device} />
-          </div>
-        </div>
-        <div className="ai-panel">
-          <div className="ai-panel-head">
-            <span className="ai-spark"><LayoutTemplate size={17} /></span>
-            <div><b>Kelola website</b><small>Edit konten, artikel, dan paket</small></div>
-          </div>
-          {!w.aiGeneratedContent?.heroTitle && (
-            <div className="generate-callout">
-              <Sparkles size={18} />
-              <div><b>Website belum dibuat AI</b><span>Klik untuk menghasilkan konten pertama.</span></div>
-              <Button data-testid="generate-again-button" onClick={generate} disabled={busy}>{busy ? "Membuat..." : "Generate"}</Button>
-            </div>
-          )}
-          <div className="detail-links">
-            <Link data-testid="manual-edit-link" to={`/dashboard/websites/${id}/edit`}>Edit informasi & produk <ArrowRight size={15} /></Link>
-            <Link data-testid="website-articles-link" to={`/dashboard/websites/${id}/articles`}><FileText size={15} />Artikel & promo <ArrowRight size={15} /></Link>
-            <Link data-testid="subscription-link" to="/dashboard/subscription">Kelola paket <ArrowRight size={15} /></Link>
-            {!isFreePlan && <button data-testid="delete-website-button" className="danger-link" onClick={removeSite}><Trash2 size={14} />Hapus website</button>}
-            {isFreePlan && <span className="text-xs text-slate-500">Website Gratis tidak dapat dihapus.</span>}
           </div>
         </div>
       </div>

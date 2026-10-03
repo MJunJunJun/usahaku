@@ -1,3 +1,4 @@
+import BusinessSiteNav from "../components/BusinessSiteNav";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
@@ -28,8 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { api, money, resolveMediaUrl } from "../lib/api";
-import { WebsiteTemplateLayout } from "./WebsiteTemplateLayouts";
-import { APP_NAME, PUBLIC_SITE_DOMAIN, publicSiteUrl } from "../lib/config";
+import { APP_NAME, publicWebsiteHref } from "../lib/config";
 import { getCoverVisualStyle } from "../lib/imageTemplates";
 import { getImageAlt } from "../lib/imageAlt";
 
@@ -70,9 +70,7 @@ const getCategoryCover = (category, name) => {
 };
 
 export default function PublicWebsiteView({ data, embedded = false, device = "desktop" }) {
-  const host = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
-  const isHostedSite = !embedded && host === `${data.slug}.${PUBLIC_SITE_DOMAIN}`;
-  const articlesUrl = `${publicSiteUrl(data.slug)}/artikel`;
+  const articlesUrl = publicWebsiteHref(data.slug, "/artikel");
   const c = data.aiGeneratedContent || {};
   const primary = data.themeConfig?.primary || c.primaryColor || "#0077B6";
   const accent = data.themeConfig?.accent || c.accentColor || "#03045E";
@@ -102,7 +100,6 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
 
   const bgUrl =
     fixUrl(data.coverImageUrl) || getCategoryCover(data.category, data.businessName);
-  const logoUrl = fixUrl(data.logoUrl);
   const products = data.products || [];
 
   // Extract categories for filter
@@ -193,69 +190,14 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
   const templateStyle = data.templateStyle || data.themeConfig?.style || c.style || "modern";
   const coverStyle = getCoverVisualStyle(data.themeConfig?.coverVariant);
 
-  // Modern memakai halaman utama lengkap. Empat template lain sengaja memiliki
-  // markup sendiri agar pilihan template mengubah komposisi website, bukan warna saja.
-  if (["warm", "bold", "minimal", "playful"].includes(templateStyle)) {
-    return <WebsiteTemplateLayout
-      template={templateStyle}
-      embedded={embedded}
-      device={device}
-      data={data}
-      c={c}
-      bgUrl={bgUrl}
-      coverStyle={coverStyle}
-      products={products}
-      fixUrl={fixUrl}
-      wa={wa}
-      highlights={showHighlights ? highlights : []}
-      testimonials={showTestimonials ? testimonials : []}
-      articleUrl={articleCount > 0 ? articlesUrl : ""}
-    />;
-  }
-
+  // Semua template berbagi section lengkap dan interaksi, dengan gaya visual masing-masing.
   return (
     <div
       className={`public-site ${embedded ? "embedded" : ""} preview-${device} template-${templateStyle}`}
       style={{ "--pri": primary, "--acc": accent }}
     >
       {/* 1. TOPBAR / NAVBAR */}
-      <header className="public-nav">
-        <div className="public-brand">
-          {logoUrl ? (
-            <img src={logoUrl} alt={getImageAlt({ alt: data.logoAlt, context: "Logo", businessName: data.businessName })} />
-          ) : (
-            <span className="public-brand-initial">
-              {(data.businessName || "U")[0].toUpperCase()}
-            </span>
-          )}
-          <div className="public-brand-title">
-            <b>{data.businessName}</b>
-            <small className="store-status">
-              <span className="status-dot-pulse" /> Buka Hari Ini
-            </small>
-          </div>
-        </div>
-
-        <nav className="public-nav-links">
-          <a href="#tentang">Tentang</a>
-          {showHighlights && <a href="#keunggulan">Keunggulan</a>}
-          {products.length > 0 && <a href="#menu">Produk & Menu</a>}
-          {showTestimonials && <a href="#testimoni">Ulasan</a>}
-          {showFaq && <a href="#faq">FAQ</a>}
-          {showContact && anyContactCard && <a href="#lokasi">Kontak</a>}
-          {articleCount > 0 && <a href={articlesUrl}>Artikel</a>}
-        </nav>
-
-        <a
-          data-testid="public-whatsapp-nav"
-          className="public-nav-cta"
-          href={wa}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <MessageCircle size={15} /> <span>Chat WhatsApp</span>
-        </a>
-      </header>
+      <BusinessSiteNav data={data} articleUrl={articleCount > 0 ? articlesUrl : ""} />
 
       {/* 2. HERO BANNER SECTION */}
       <section

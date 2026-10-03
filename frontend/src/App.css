@@ -2199,10 +2199,6 @@
   background: #fdfbf7;
   color: #292524;
 }
-.public-site.template-warm .public-nav {
-  background: rgba(253, 251, 247, 0.94);
-  border-bottom: 1px solid #f5ebe0;
-}
 .public-site.template-warm .section-header h3,
 .public-site.template-warm .public-hero h2 {
   font-family: Georgia, Cambria, "Times New Roman", serif;
@@ -2221,15 +2217,6 @@
 /* 3. TEMPLATE: BOLD (Vibrant, High-Contrast, Dynamic) */
 .public-site.template-bold {
   background: #0f172a;
-  color: #f8fafc;
-}
-.public-site.template-bold .public-nav {
-  background: rgba(15, 23, 42, 0.95);
-  border-bottom: 1px solid #1e293b;
-  color: #fff;
-}
-.public-site.template-bold .public-brand-title b,
-.public-site.template-bold .public-nav-links a {
   color: #f8fafc;
 }
 .public-site.template-bold .section-header h3 {
@@ -2268,11 +2255,6 @@
   background: #ffffff;
   color: #1e293b;
 }
-.public-site.template-minimal .public-nav {
-  background: #ffffff;
-  border-bottom: 1px solid #f1f5f9;
-  box-shadow: none;
-}
 .public-site.template-minimal .section-header h3 {
   font-weight: 500;
   letter-spacing: 0.5px;
@@ -2290,7 +2272,6 @@
   border-radius: 8px;
 }
 .public-site.template-minimal .btn-hero-primary,
-.public-site.template-minimal .public-nav-cta,
 .public-site.template-minimal .product-order-btn {
   border-radius: 4px;
 }
@@ -2299,10 +2280,6 @@
 .public-site.template-playful {
   background: #faf5ff;
   color: #3b0764;
-}
-.public-site.template-playful .public-nav {
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 2px dashed #f0abfc;
 }
 .public-site.template-playful .about-content-card,
 .public-site.template-playful .highlight-box,
@@ -2316,7 +2293,6 @@
 }
 .public-site.template-playful .btn-hero-primary,
 .public-site.template-playful .btn-hero-secondary,
-.public-site.template-playful .public-nav-cta,
 .public-site.template-playful .product-order-btn,
 .public-site.template-playful .hero-pill-badge,
 .public-site.template-playful .section-badge {
@@ -2450,3 +2426,45 @@
 .section-gap{height:16px}
 .pkg-picker{margin-top:10px;padding:12px;border-radius:12px;background:rgba(15,23,42,.55);border:1px dashed rgba(148,163,184,.35)}
 .pkg-picker .pkg-grid{margin-top:8px}
+
+/* Full-width website preview and settings dialog. */
+.detail-page .editor-layout{grid-template-columns:minmax(0,1fr);justify-content:stretch}
+.detail-page .page-head{gap:24px;flex-wrap:wrap}
+.detail-page .preview-frame{min-width:0}
+.website-settings-dialog{width:calc(100% - 32px);max-width:680px;max-height:90dvh;overflow-y:auto;border-radius:20px;background:#fff;padding:28px}
+.website-template-options{border:0;padding:0;margin:0;min-width:0}
+.website-template-options legend{font-weight:700;font-size:14px;color:#0f172a}
+.website-template-options>p{font-size:12px;color:#64748b;line-height:1.6;margin:8px 0 14px}
+.website-template-option{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid #e2e8f0;border-radius:12px;margin-top:9px;cursor:pointer}
+.website-template-option.selected{border-color:#0ea5e9;background:#f0f9ff}
+.website-template-option:focus-within{outline:2px solid #0ea5e9;outline-offset:2px}
+.website-template-option input{width:16px;height:16px;flex-shrink:0;accent-color:#0284c7}
+.website-template-swatch{display:grid;place-items:center;width:42px;height:42px;flex-shrink:0;border-radius:10px;color:#fff}
+.website-template-option b{font-size:13px;color:#0f172a}
+.website-template-option small{color:#0369a1;font-size:11px}
+.website-template-option>span:last-child>span{display:block;color:#64748b;font-size:12px;line-height:1.5;margin-top:4px}
+.website-settings-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.website-settings-delete{display:flex;align-items:center;gap:18px;border-top:1px solid #e2e8f0;padding-top:20px;margin-top:4px}
+.website-settings-delete b{font-size:14px;color:#991b1b}
+.website-settings-delete p{font-size:12px;color:#64748b;line-height:1.6;margin:5px 0 0}
+.website-settings-delete .website-delete-button{color:#b91c1c;border-color:#fecaca;flex-shrink:0}
+@media(max-width:640px){.website-settings-dialog{padding:24px 18px}.website-settings-delete{align-items:flex-start;flex-direction:column}.website-template-swatch{display:none}.detail-page .head-actions .btn{margin-top:0}}
+
+.business-brand-link{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none}
+.business-nav-home{color:inherit!important;font:inherit!important;border:0!important;padding:0!important;text-decoration:none}
+
+.website-color-options{border:0;padding:0;margin:8px 0 18px;min-width:0}
+.website-color-options legend{font-size:14px;font-weight:700;margin-bottom:12px}
+.website-color-palettes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.website-color-palettes button{display:flex;align-items:center;gap:9px;text-align:left;border:1px solid #e2e8f0;border-radius:10px;padding:10px;background:#fff;font-size:12px;cursor:pointer;color:#334155}
+.website-color-palettes button[aria-pressed="true"]{border-color:#0ea5e9;background:#f0f9ff;box-shadow:0 0 0 1px #0ea5e9}
+.website-color-palettes button:focus-visible{outline:2px solid #0ea5e9;outline-offset:2px}
+.website-color-palettes button span{width:26px;height:26px;border-radius:50%;flex-shrink:0}
+.website-custom-colors{display:flex;gap:24px;flex-wrap:wrap;margin-top:14px}
+.website-custom-colors label{display:flex;align-items:center;gap:10px;font-size:12px;color:#475569}
+.website-custom-colors input{width:44px;height:32px;border:1px solid #cbd5e1;border-radius:6px;padding:2px;cursor:pointer}
+
+.public-site.template-bold .public-highlights-section,
+.public-site.template-bold .public-testimonials-section{background:#111827}
+.public-site.template-bold .testimonial-card{color:#f1f5f9}
+.public-site.template-bold .testimonial-card p{color:#cbd5e1}

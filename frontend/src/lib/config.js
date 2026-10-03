@@ -12,3 +12,9 @@ export const PUBLIC_SITE_HOST = PUBLIC_SITE_DOMAIN;
 export const publicSiteHost = (slug) => slug ? `${slug}.${PUBLIC_SITE_DOMAIN}` : PUBLIC_SITE_DOMAIN;
 export const publicSiteUrl = (slug, path = "") => `https://${publicSiteHost(slug)}${path}`;
 export const publicSitePath = (slug, path = "") => `/site/${slug}${path}`;
+
+// Keep local/path-based previews on the same origin when following public links.
+export const publicWebsiteHref = (slug, path = "") =>
+  typeof window !== "undefined" && window.location.pathname.startsWith(`/site/${slug}`)
+    ? publicSitePath(slug, path)
+    : publicSiteUrl(slug, path);
