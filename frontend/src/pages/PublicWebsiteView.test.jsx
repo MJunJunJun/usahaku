@@ -33,3 +33,11 @@ test("playful booking opens WhatsApp while secondary CTA reaches the catalogue",
  expect(container.querySelector('[data-testid="public-hero-products"]').getAttribute('href')).toBe('#menu');
  expect(container.querySelector('.playful-hero-actions').children.length).toBe(2);
 });
+
+test.each(["modern", "warm", "bold", "minimal", "playful"])("%s keeps owner opening-hours newlines", templateStyle => {
+ const hours="Senin - Sabtu: 08:00 - 18:00 WIB\nMinggu: 09:00 - 15:00 WIB";
+ const container=document.createElement('div');
+ container.innerHTML=renderToStaticMarkup(<PublicWebsiteView data={{...site,templateStyle,city:'Purwokerto',aiGeneratedContent:{...site.aiGeneratedContent,businessHours:hours}}} embedded />);
+ expect(container.querySelector('.hours-badge').textContent).toBe(hours);
+ expect(container.querySelector('.about-meta').textContent).toContain(hours);
+});

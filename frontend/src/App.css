@@ -2487,3 +2487,6 @@
 .public-site.embedded.preview-mobile .bold-headline{margin-top:125px}
 .public-site.embedded.preview-mobile .bold-headline h1{font-size:54px;letter-spacing:-3px}
 .public-site.embedded.preview-mobile .bold-facts{left:24px;right:24px;gap:13px;flex-wrap:wrap}
+
+/* Preserve owner-entered line breaks in opening hours across every template. */
+.public-site .hours-badge,.public-site .about-meta-item>span{white-space:pre-line}
