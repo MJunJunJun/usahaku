@@ -72,7 +72,7 @@ const getCategoryCover = (category, name) => {
   return "https://images.unsplash.com/photo-1445116572660-236099ec97a0?q=80&w=1200&auto=format&fit=crop";
 };
 
-export default function PublicWebsiteView({ data, embedded = false, device = "desktop" }) {
+export default function PublicWebsiteView({ data, embedded = false, device = "desktop", onCoverPositionChange }) {
   const articlesUrl = publicWebsiteHref(data.slug, "/artikel");
   const c = data.aiGeneratedContent || {};
   const primary = data.themeConfig?.primary || c.primaryColor || "#0077B6";
@@ -192,6 +192,8 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
 
   const templateStyle = data.templateStyle || data.themeConfig?.style || c.style || "modern";
   const coverStyle = getCoverVisualStyle(data.themeConfig?.coverVariant);
+  const coverPosition = data.themeConfig?.coverPosition;
+  if (coverPosition) { coverStyle.objectPosition = coverStyle.backgroundPosition = coverPosition.x + "% " + coverPosition.y + "%"; }
 
   // Semua template berbagi section lengkap dan interaksi, dengan gaya visual masing-masing.
   return (
@@ -203,7 +205,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       <BusinessSiteNav data={data} articleUrl={articleCount > 0 ? articlesUrl : ""} />
 
       {/* Hero khas template, section dan navigasi tetap berbagi komponen. */}
-      {templateStyle !== "modern" && ["warm", "bold", "minimal", "playful"].includes(templateStyle) ? <BusinessSiteHero template={templateStyle} data={data} c={c} bgUrl={bgUrl} coverStyle={coverStyle} products={products} wa={wa} /> : (
+      {templateStyle !== "modern" && ["warm", "bold", "minimal", "playful"].includes(templateStyle) ? <BusinessSiteHero template={templateStyle} data={data} c={c} bgUrl={bgUrl} coverStyle={coverStyle} products={products} wa={wa} coverPosition={coverPosition} onCoverPositionChange={onCoverPositionChange} /> : (
       <section
         className="public-hero"
         style={{

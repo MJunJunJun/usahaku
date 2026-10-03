@@ -1,0 +1,21 @@
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import CoverImage from "./CoverImage";
+global.IS_REACT_ACT_ENVIRONMENT = true;
+test("dragging right shifts the visible crop right and clamps its saved position", async () => {
+ const container=document.createElement('div');document.body.appendChild(container);const root=createRoot(container);const change=jest.fn();
+ await act(async () => root.render(<CoverImage src="test.jpg" alt="Foto" position={{x:50,y:50}} onPositionChange={change} />));
+ const img=container.querySelector('img');
+ for (const [key,value] of Object.entries({naturalWidth:800,naturalHeight:400,clientWidth:400,clientHeight:400})) Object.defineProperty(img,key,{value});
+ img.setPointerCapture=jest.fn(); img.hasPointerCapture=()=>true; img.releasePointerCapture=jest.fn();
+ await act(async () => img.dispatchEvent(new MouseEvent('pointerdown',{bubbles:true,clientX:100,clientY:100,button:0})));
+ await act(async () => img.dispatchEvent(new MouseEvent('pointermove',{bubbles:true,clientX:180,clientY:160})));
+ expect(change).toHaveBeenLastCalledWith({x:30,y:50});
+ await act(async () => img.dispatchEvent(new MouseEvent('pointermove',{bubbles:true,clientX:1000,clientY:160})));
+ expect(change).toHaveBeenLastCalledWith({x:0,y:50});
+ await act(async () => img.dispatchEvent(new MouseEvent('pointerup',{bubbles:true})));
+ const count=change.mock.calls.length;
+ await act(async () => img.dispatchEvent(new MouseEvent('pointermove',{bubbles:true,clientX:20})));
+ expect(change).toHaveBeenCalledTimes(count);
+ await act(async () => root.unmount());container.remove();
+});

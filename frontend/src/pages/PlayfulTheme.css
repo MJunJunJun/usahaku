@@ -44,3 +44,5 @@
 .public-site.template-playful .playful-photo-rays:before,.public-site.template-playful .playful-photo-rays:after{content:'';position:absolute;width:2px;height:13px;background:var(--pri);border-radius:2px;transform:rotate(25deg);top:0;left:5px}
 .public-site.template-playful .playful-photo-rays:after{height:10px;transform:rotate(55deg);top:10px;left:17px}
 .public-site.template-playful.embedded.preview-mobile .playful-photo-frame img{height:100%}
+
+.photo-position-controls{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 0;font-size:12px;color:#475569}.photo-position-controls label{display:flex;align-items:center;gap:8px}.photo-position-controls input{width:110px}.photo-position-controls>span{flex-basis:100%}

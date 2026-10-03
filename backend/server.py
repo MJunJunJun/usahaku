@@ -505,7 +505,12 @@ class ArticleInput(BaseModel):
 class AIEditInput(BaseModel):
     command: str
 
+class CoverPositionInput(BaseModel):
+    x: float = Field(..., ge=0, le=100, allow_inf_nan=False)
+    y: float = Field(..., ge=0, le=100, allow_inf_nan=False)
+
 class ThemeInput(BaseModel):
+    coverPosition: Optional[CoverPositionInput] = None
     primary: Optional[str] = None
     accent: Optional[str] = None
     style: Optional[str] = None
@@ -1020,6 +1025,7 @@ async def update_theme(site_id: str, data: ThemeInput, user=Depends(current_user
     site = await owned_site(site_id, user)
     theme = {**(site.get("themeConfig") or {})}
     ai = {**(site.get("aiGeneratedContent") or {})}
+    if data.coverPosition is not None: theme["coverPosition"] = data.coverPosition.model_dump()
     if data.primary: theme["primary"] = data.primary
     if data.accent: theme["accent"] = data.accent
     if data.style:
