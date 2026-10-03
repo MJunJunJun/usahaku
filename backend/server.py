@@ -157,13 +157,18 @@ DEFAULT_SETTINGS = {
 # Website ini hanya untuk halaman "Contoh" di landing page. Produk disimpan
 # seperti produk biasa agar pengunjung dapat melihat katalog yang realistis.
 SHOWCASE_SITES = [
-    {"slug": "demo-kopi-senja", "name": "Kopi Senja", "category": "Coffee Shop", "style": "modern", "primary": "#7a4c2e", "cover": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1600&auto=format&fit=crop", "hero": "Temukan jeda di setiap teguk.", "description": "Kedai kopi lokal dengan suasana hangat untuk bekerja dan berbincang.", "products": [("Es Kopi Gula Aren", 28000), ("Cappuccino Klasik", 32000), ("Americano", 24000), ("Matcha Latte", 33000), ("Croissant Butter", 22000), ("Banana Bread", 24000), ("Paket Kopi Pagi", 45000)]},
-    {"slug": "demo-rumah-roti", "name": "Rumah Roti", "category": "Bakery", "style": "modern", "primary": "#a16207", "cover": "https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=1600&auto=format&fit=crop", "hero": "Roti hangat, dibuat setiap pagi.", "description": "Bakery rumahan dengan roti segar, kue lembut, dan bahan pilihan.", "products": [("Sourdough Original", 45000), ("Roti Sobek Cokelat", 30000), ("Croissant Almond", 28000), ("Cinnamon Roll", 26000), ("Pain au Chocolat", 29000), ("Donat Kentang", 18000), ("Paket Sarapan", 55000)]},
-    {"slug": "demo-nusa-craft", "name": "Nusa Craft", "category": "Fashion", "style": "modern", "primary": "#0f766e", "cover": "https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=1600&auto=format&fit=crop", "hero": "Karya lokal untuk gaya yang berkarakter.", "description": "Koleksi fashion dan aksesori pilihan yang memadukan karya lokal dan gaya modern.", "products": [("Kemeja Linen Aruna", 245000), ("Outer Tenun Sumba", 389000), ("Tote Bag Kanvas", 125000), ("Scarf Motif Nusa", 99000), ("Celana Santai Rami", 215000), ("Dompet Kulit Mini", 159000), ("Gift Set Nusantara", 325000)]},
-    {"slug": "demo-barber-co", "name": "Barber Co", "category": "Barbershop", "style": "modern", "primary": "#1f2937", "cover": "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?q=80&w=1600&auto=format&fit=crop", "hero": "Potongan rapi, percaya diri setiap hari.", "description": "Barbershop modern dengan barber berpengalaman dan suasana santai.", "products": [("Classic Haircut", 50000), ("Skin Fade", 65000), ("Haircut + Wash", 75000), ("Beard Trim", 35000), ("Hot Towel Shave", 55000), ("Kids Haircut", 40000), ("Paket Grooming", 115000)]},
-    {"slug": "demo-sari-beauty", "name": "Sari Beauty", "category": "Beauty", "style": "modern", "primary": "#db2777", "cover": "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=1600&auto=format&fit=crop", "hero": "Rawat diri, pancarkan versi terbaikmu.", "description": "Perawatan kecantikan yang personal, nyaman, dan ditangani terapis terpercaya.", "products": [("Basic Facial", 125000), ("Brightening Facial", 180000), ("Manicure Express", 85000), ("Gel Polish", 120000), ("Lash Lift", 175000), ("Hair Spa", 150000), ("Paket Glow Up", 350000)]},
-    {"slug": "demo-warung-sundari", "name": "Warung Sundari", "category": "Restaurant", "style": "modern", "primary": "#b45309", "cover": "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?q=80&w=1600&auto=format&fit=crop", "hero": "Rasa rumahan yang selalu dirindukan.", "description": "Masakan Nusantara sehari-hari dengan bumbu segar dan cita rasa rumahan.", "products": [("Nasi Ayam Bakar", 32000), ("Nasi Rendang", 35000), ("Soto Ayam", 28000), ("Gado-Gado", 25000), ("Sate Ayam", 30000), ("Es Teh Manis", 8000), ("Paket Keluarga", 125000)]},
+    {"slug": "kopi-senja", "name": "Kopi Senja", "category": "Coffee Shop", "style": "warm", "primary": "#7a4c2e", "cover": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1600&auto=format&fit=crop", "hero": "Temukan jeda di setiap teguk.", "description": "Kedai kopi lokal dengan suasana hangat untuk bekerja dan berbincang.", "products": [("Es Kopi Gula Aren", 28000), ("Cappuccino Klasik", 32000), ("Americano", 24000), ("Matcha Latte", 33000), ("Croissant Butter", 22000), ("Banana Bread", 24000), ("Paket Kopi Pagi", 45000)]},
+    {"slug": "rumah-roti", "name": "Rumah Roti", "category": "Bakery", "style": "playful", "primary": "#a16207", "cover": "https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=1600&auto=format&fit=crop", "hero": "Roti hangat, dibuat setiap pagi.", "description": "Bakery rumahan dengan roti segar, kue lembut, dan bahan pilihan.", "products": [("Sourdough Original", 45000), ("Roti Sobek Cokelat", 30000), ("Croissant Almond", 28000), ("Cinnamon Roll", 26000), ("Pain au Chocolat", 29000), ("Donat Kentang", 18000), ("Paket Sarapan", 55000)]},
+    {"slug": "nusa-craft", "name": "Nusa Craft", "category": "Fashion", "style": "minimal", "primary": "#0f766e", "cover": "https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=1600&auto=format&fit=crop", "hero": "Karya lokal untuk gaya yang berkarakter.", "description": "Koleksi fashion dan aksesori pilihan yang memadukan karya lokal dan gaya modern.", "products": [("Kemeja Linen Aruna", 245000), ("Outer Tenun Sumba", 389000), ("Tote Bag Kanvas", 125000), ("Scarf Motif Nusa", 99000), ("Celana Santai Rami", 215000), ("Dompet Kulit Mini", 159000), ("Gift Set Nusantara", 325000)]},
+    {"slug": "barber-co", "name": "Barber Co", "category": "Barbershop", "style": "bold", "primary": "#1f2937", "cover": "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?q=80&w=1600&auto=format&fit=crop", "hero": "Potongan rapi, percaya diri setiap hari.", "description": "Barbershop modern dengan barber berpengalaman dan suasana santai.", "products": [("Classic Haircut", 50000), ("Skin Fade", 65000), ("Haircut + Wash", 75000), ("Beard Trim", 35000), ("Hot Towel Shave", 55000), ("Kids Haircut", 40000), ("Paket Grooming", 115000)]},
+    {"slug": "sari-beauty", "name": "Sari Beauty", "category": "Beauty", "style": "modern", "primary": "#db2777", "cover": "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=1600&auto=format&fit=crop", "hero": "Rawat diri, pancarkan versi terbaikmu.", "description": "Perawatan kecantikan yang personal, nyaman, dan ditangani terapis terpercaya.", "products": [("Basic Facial", 125000), ("Brightening Facial", 180000), ("Manicure Express", 85000), ("Gel Polish", 120000), ("Lash Lift", 175000), ("Hair Spa", 150000), ("Paket Glow Up", 350000)]},
+    {"slug": "warung-sundari", "name": "Warung Sundari", "category": "Restaurant", "style": "warm", "primary": "#b45309", "cover": "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?q=80&w=1600&auto=format&fit=crop", "hero": "Rasa rumahan yang selalu dirindukan.", "description": "Masakan Nusantara sehari-hari dengan bumbu segar dan cita rasa rumahan.", "products": [("Nasi Ayam Bakar", 32000), ("Nasi Rendang", 35000), ("Soto Ayam", 28000), ("Gado-Gado", 25000), ("Sate Ayam", 30000), ("Es Teh Manis", 8000), ("Paket Keluarga", 125000)]},
 ]
+
+def canonical_showcase_slug(slug: str) -> str:
+    clean = slug[5:] if slug.startswith("demo-") else slug
+    return clean if any(item["slug"] == clean for item in SHOWCASE_SITES) else slug
+
 
 async def ensure_showcase_sites(admin_whatsapp: str):
     showcase_owner_id = "usahaku-showcase-owner"
@@ -171,16 +176,20 @@ async def ensure_showcase_sites(admin_whatsapp: str):
         await db.users.insert_one({"id": showcase_owner_id, "name": "Situska Showcase", "email": "showcase@usahaku.internal", "password_hash": "", "role": "SYSTEM", "accountStatus": "ACTIVE", "subscriptionStatus": "ACTIVE", "planSlug": "premium", "websiteQuota": 999, "createdAt": now()})
     for spec in SHOWCASE_SITES:
         site = await db.websites.find_one({"slug": spec["slug"]}, {"_id": 0})
+        if site and site.get("userId") != showcase_owner_id:
+            raise RuntimeError(f"Alamat contoh sudah digunakan: {spec['slug']}")
+        if not site:
+            site = await db.websites.find_one({"slug": f"demo-{spec['slug']}", "userId": showcase_owner_id}, {"_id": 0})
         website_id = (site or {}).get("id") or uid()
         website = {
             "id": website_id, "userId": showcase_owner_id, "isShowcase": True,
             "businessName": spec["name"], "category": spec["category"], "description": spec["description"],
-            "logoUrl": f"/api/showcase/logo/{spec['slug']}", "coverImageUrl": f"/assets/showcase/{spec['slug'].replace('demo-', '')}-cover.png", "whatsapp": admin_whatsapp, "phone": "", "email": "", "instagram": "", "facebook": "", "tiktok": "", "address": "Indonesia", "city": "", "province": "", "postalCode": "", "latitude": None, "longitude": None, "customDomain": "", "status": "PUBLISHED", "slug": spec["slug"], "templateStyle": "modern",
+            "logoUrl": f"/api/showcase/logo/{spec['slug']}", "coverImageUrl": f"/assets/showcase/{spec['slug'].replace('demo-', '')}-cover.png", "whatsapp": admin_whatsapp, "phone": "", "email": "", "instagram": "", "facebook": "", "tiktok": "", "address": "Indonesia", "city": "", "province": "", "postalCode": "", "latitude": None, "longitude": None, "customDomain": "", "status": "PUBLISHED", "slug": spec["slug"], "templateStyle": spec["style"],
             "themeConfig": {"primary": spec["primary"], "accent": spec["primary"], "style": spec["style"]},
             "aiGeneratedContent": {"heroTitle": spec["hero"], "heroSubtitle": spec["description"], "heroCta": "Lihat katalog", "about": spec["description"], "highlights": ["Pilihan berkualitas", "Mudah dipesan", "Pelayanan ramah"], "productHeadline": "Pilihan favorit", "primaryColor": spec["primary"], "accentColor": spec["primary"], "style": spec["style"]},
             "businessHours": [], "updatedAt": now(), "createdAt": site.get("createdAt", now()) if site else now(),
         }
-        await db.websites.update_one({"slug": spec["slug"]}, {"$set": website}, upsert=True)
+        await db.websites.update_one({"id": website_id, "userId": showcase_owner_id}, {"$set": website}, upsert=True)
         await db.products.delete_many({"websiteId": website_id})
         for index, (name, price) in enumerate(spec["products"]):
             image_url = f"/assets/showcase/{spec['slug'].replace('demo-', '')}-{slugify(name)}.png"
@@ -720,14 +729,15 @@ async def public_settings():
 
 @api.get("/showcase/logo/{slug}")
 async def showcase_logo(slug: str):
+    slug = canonical_showcase_slug(slug)
     """Logo SVG ringan untuk setiap website contoh; dapat dipakai seperti file gambar."""
     marks = {
-        "demo-kopi-senja": ("KS", "M24 42h48v28H24z M31 33a17 17 0 0 1 34 0 M72 47h8a10 10 0 0 1 0 18h-8"),
-        "demo-rumah-roti": ("RR", "M22 61c0-21 52-21 52 0v12H22z M34 42c4 8 4 16 0 22 M48 39c4 9 4 18 0 25 M62 42c4 8 4 16 0 22"),
-        "demo-nusa-craft": ("NC", "M25 29h46v46H25z M25 44h46M40 29v46M56 29v46"),
-        "demo-barber-co": ("BC", "M29 30l38 38M67 30L29 68M29 30a8 8 0 1 0 0 .1M67 68a8 8 0 1 0 0 .1"),
-        "demo-sari-beauty": ("SB", "M48 24c7 13 18 17 18 28S55 67 48 76C41 67 30 63 30 52s11-15 18-28z M26 30l4 4m40-4-4 4"),
-        "demo-warung-sundari": ("WS", "M22 57h52v16H22z M27 52c8-14 30-14 38 0 M35 29c-7 8 3 10-3 19m16-19c-7 8 3 10-3 19m16-19c-7 8 3 10-3 19"),
+        "kopi-senja": ("KS", "M24 42h48v28H24z M31 33a17 17 0 0 1 34 0 M72 47h8a10 10 0 0 1 0 18h-8"),
+        "rumah-roti": ("RR", "M22 61c0-21 52-21 52 0v12H22z M34 42c4 8 4 16 0 22 M48 39c4 9 4 18 0 25 M62 42c4 8 4 16 0 22"),
+        "nusa-craft": ("NC", "M25 29h46v46H25z M25 44h46M40 29v46M56 29v46"),
+        "barber-co": ("BC", "M29 30l38 38M67 30L29 68M29 30a8 8 0 1 0 0 .1M67 68a8 8 0 1 0 0 .1"),
+        "sari-beauty": ("SB", "M48 24c7 13 18 17 18 28S55 67 48 76C41 67 30 63 30 52s11-15 18-28z M26 30l4 4m40-4-4 4"),
+        "warung-sundari": ("WS", "M22 57h52v16H22z M27 52c8-14 30-14 38 0 M35 29c-7 8 3 10-3 19m16-19c-7 8 3 10-3 19m16-19c-7 8 3 10-3 19"),
     }
     spec = next((item for item in SHOWCASE_SITES if item["slug"] == slug), None)
     if not spec or slug not in marks:
@@ -1477,6 +1487,7 @@ async def unpublish(site_id: str, user=Depends(current_user)):
 
 @api.get("/public/{slug}")
 async def public_site(slug: str):
+    slug = canonical_showcase_slug(slug)
     site = await db.websites.find_one({"slug": slug, "status": "PUBLISHED"}, {"_id": 0})
     if not site: raise HTTPException(404, "Website belum dipublikasikan")
     owner = await db.users.find_one({"id": site["userId"]}, {"_id": 0})
@@ -1493,19 +1504,21 @@ async def public_site(slug: str):
         # situs lama yang belum punya kartu: tetap pakai aturan status langganan lama
         return {"maintenance": True, "slug": slug, "businessName": site.get("businessName", "")}
     await db.websites.update_one({"slug": slug}, {"$inc": {"pageViews": 1}})
-    site["products"] = await db.products.find({"websiteId": site["id"]}, {"_id": 0}).sort("sortOrder", 1).to_list(200)
+    site["products"] = await db.products.find({"websiteId": site["id"]}, {"_id": 0}).sort("sortOrder", 1).to_list(None)
     site["maintenance"] = False
     site["showCredit"] = state["showCredit"]
     return site
 
 @api.get("/public/{slug}/articles")
 async def public_articles(slug: str):
+    slug = canonical_showcase_slug(slug)
     site = await db.websites.find_one({"slug": slug, "status": "PUBLISHED"}, {"_id": 0})
     if not site: raise HTTPException(404, "Website belum dipublikasikan")
     return await db.articles.find({"websiteId": site["id"], "status": "PUBLISHED"}, {"_id": 0, "content": 0}).sort("publishedAt", -1).to_list(200)
 
 @api.get("/public/{slug}/articles/{article_slug}")
 async def public_article(slug: str, article_slug: str):
+    slug = canonical_showcase_slug(slug)
     site = await db.websites.find_one({"slug": slug, "status": "PUBLISHED"}, {"_id": 0})
     if not site: raise HTTPException(404, "Website belum dipublikasikan")
     article = await db.articles.find_one({"websiteId": site["id"], "slug": article_slug, "status": "PUBLISHED"}, {"_id": 0})
@@ -2905,6 +2918,14 @@ _CSRF_EXEMPT_PATHS = {
 @app.middleware("http")
 async def csrf_protection(request: Request, call_next):
     """Require a same-origin CSRF token for authenticated state changes."""
+    if request.method in {"GET", "HEAD"}:
+        hosted_slug = _hosted_site_slug(request)
+        canonical_slug = canonical_showcase_slug(hosted_slug)
+        if canonical_slug != hosted_slug:
+            target = f"https://{canonical_slug}.{PUBLIC_SITE_DOMAIN}{request.url.path}"
+            if request.url.query:
+                target += f"?{request.url.query}"
+            return RedirectResponse(target, status_code=301)
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         path = request.url.path
         exempt = path in _CSRF_EXEMPT_PATHS or path.startswith("/api/public/")

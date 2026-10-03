@@ -1,3 +1,5 @@
+import { SHOWCASE_THEMES } from "../lib/showcaseData";
+import { WEBSITE_TEMPLATES } from "../lib/templates";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check, ChevronRight, Menu, X, Sparkles } from "lucide-react";
@@ -86,7 +88,7 @@ const Example = ({ title, category, description, color, slug, testid }) => (
       <span>{publicSiteHost(slug)}</span>
     </div>
     <div className="example-body">
-      <small>{category.toUpperCase()}</small>
+      <small>{category.toUpperCase()} · {WEBSITE_TEMPLATES.find(t => t.id === SHOWCASE_THEMES[slug])?.name}</small>
       <h4>{description}</h4>
     </div>
   </a>
@@ -120,7 +122,7 @@ export default function Landing() {
           </div>
           <div className="hero-visual reveal delay-1">
             <div className="browser">
-              <div className="browser-bar"><span /><span /><span /><small>{publicSiteHost("demo-kopi-senja")}</small></div>
+              <div className="browser-bar"><span /><span /><span /><small>{publicSiteHost("kopi-senja")}</small></div>
               <div className="site-preview">
                 <div className="site-nav"><b>kopi<span>senja</span></b><span>Menu &nbsp; Tentang &nbsp; Lokasi</span><strong>Pesan sekarang</strong></div>
                 <div className="site-hero">
@@ -202,12 +204,12 @@ export default function Landing() {
             <p>Dari kuliner, toko, jasa, sampai bisnis lokal dan usaha kecil—Situska menyesuaikan gaya visual sesuai karakter bisnis Anda.</p>
           </div>
           <div className="example-grid">
-            <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" description="Contoh website usaha coffee shop dengan menu dan lokasi." slug="demo-kopi-senja" color="linear-gradient(135deg,#03045E,#0077B6)" />
-            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" description="Contoh website bakery dengan katalog roti dan informasi usaha." slug="demo-rumah-roti" color="linear-gradient(135deg,#03045E,#00B4D8)" />
-            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" description="Contoh website fashion untuk menampilkan koleksi pilihan." slug="demo-nusa-craft" color="linear-gradient(135deg,#0077B6,#00B4D8)" />
-            <Example testid="example-barber" title="Barber Co" category="Barbershop" description="Contoh website barbershop dengan layanan dan kontak cepat." slug="demo-barber-co" color="linear-gradient(135deg,#03045E,#0077B6)" />
-            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" description="Contoh website beauty untuk layanan perawatan dan reservasi." slug="demo-sari-beauty" color="linear-gradient(135deg,#0077B6,#00B4D8)" />
-            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" description="Contoh website restoran dengan menu, lokasi, dan informasi bisnis." slug="demo-warung-sundari" color="linear-gradient(135deg,#03045E,#00B4D8)" />
+            <Example testid="example-coffee" title="Kopi Senja" category="Coffee Shop" description="Contoh website usaha coffee shop dengan menu dan lokasi." slug="kopi-senja" color="linear-gradient(135deg,#7a4c2e,#b78052)" />
+            <Example testid="example-bakery" title="Rumah Roti" category="Bakery" description="Contoh website bakery dengan katalog roti dan informasi usaha." slug="rumah-roti" color="linear-gradient(135deg,#a16207,#dca651)" />
+            <Example testid="example-fashion" title="Nusa Craft" category="Fashion" description="Contoh website fashion untuk menampilkan koleksi pilihan." slug="nusa-craft" color="linear-gradient(135deg,#0f766e,#32958b)" />
+            <Example testid="example-barber" title="Barber Co" category="Barbershop" description="Contoh website barbershop dengan layanan dan kontak cepat." slug="barber-co" color="linear-gradient(135deg,#111827,#475569)" />
+            <Example testid="example-beauty" title="Sari Beauty" category="Beauty" description="Contoh website beauty untuk layanan perawatan dan reservasi." slug="sari-beauty" color="linear-gradient(135deg,#9d174d,#db2777)" />
+            <Example testid="example-restaurant" title="Warung Sundari" category="Restaurant" description="Contoh website restoran dengan menu, lokasi, dan informasi bisnis." slug="warung-sundari" color="linear-gradient(135deg,#854d0e,#b45309)" />
           </div>
         </section>
 
