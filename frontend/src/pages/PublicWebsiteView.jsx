@@ -1,3 +1,5 @@
+import "./PlayfulTheme.css";
+import { businessHighlights } from "../lib/businessHighlights";
 import BusinessSiteHero from "../components/BusinessSiteHero";
 import BusinessSiteNav from "../components/BusinessSiteNav";
 import { useEffect, useState } from "react";
@@ -114,7 +116,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       : products.filter((p) => p.category === selectedCategory);
 
   // Normalize highlights
-  const highlights = (c.highlights || []).map((h, i) => {
+  const highlights = businessHighlights(data, c.highlights || []).map((h, i) => {
     if (typeof h === "string") {
       return {
         title: h,
@@ -275,10 +277,10 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
       {/* 3. TENTANG KAMI / STORY SECTION */}
       {(c.about || data.description) && (
         <section id="tentang" className="public-about-section">
-          <div className="section-container">
+          <div className={"section-container" + (templateStyle === "playful" ? " playful-about-grid" : "")}>
             <div className="section-header center">
               <span className="section-badge">TENTANG KAMI</span>
-              <h3>Cerita & Komitmen {data.businessName}</h3>
+              <h3>{templateStyle === "playful" ? "Tentang " + data.businessName : "Cerita & Komitmen " + data.businessName}</h3>
               <div className="section-line" />
             </div>
             <div className="about-content-card">
@@ -302,6 +304,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
                 </div>
               )}
             </div>
+            {templateStyle === "playful" && <img className="playful-about-photo" src={bgUrl} alt={getImageAlt({ alt: data.coverImageAlt, context: "Suasana usaha", businessName: data.businessName })} width="640" height="480" loading="lazy" style={{ objectPosition: coverStyle.objectPosition }} />}
           </div>
         </section>
       )}
@@ -312,7 +315,7 @@ export default function PublicWebsiteView({ data, embedded = false, device = "de
           <div className="section-container">
             <div className="section-header center">
               <span className="section-badge">MENGAPA MEMILIH KAMI</span>
-              <h3>Keunggulan & Jaminan Kualitas</h3>
+              <h3>{templateStyle === "playful" ? "Kenapa Pilih " + data.businessName + "?" : "Keunggulan & Jaminan Kualitas"}</h3>
               <div className="section-line" />
             </div>
 

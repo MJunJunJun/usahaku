@@ -25,3 +25,11 @@ test("hidden sections stay hidden in alternative templates", () => {
   const html = renderToStaticMarkup(<PublicWebsiteView data={{ ...site, templateStyle: "warm", sectionVisibility: { highlights: false, testimonials: false, faq: false, contact: false } }} embedded />);
   for (const id of ["keunggulan", "testimoni", "faq", "lokasi"]) expect(html).not.toContain('id="' + id + '"');
 });
+
+test("playful booking opens WhatsApp while secondary CTA reaches the catalogue", () => {
+ const container = document.createElement("div");
+ container.innerHTML = renderToStaticMarkup(<PublicWebsiteView data={{ ...site, templateStyle: "playful" }} embedded />);
+ expect(container.querySelector('[data-testid="public-playful-whatsapp"]').href).toContain('wa.me/6281234567890');
+ expect(container.querySelector('[data-testid="public-hero-products"]').getAttribute('href')).toBe('#menu');
+ expect(container.querySelector('.playful-hero-actions').children.length).toBe(2);
+});
